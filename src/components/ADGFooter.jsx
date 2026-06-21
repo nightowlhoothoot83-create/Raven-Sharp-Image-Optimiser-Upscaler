@@ -8,6 +8,7 @@ const BRANDS = [
   { name:"Feed The Feed",     logo:"/brands/feedTheFeed.png",       url:"https://www.facebook.com/feedthefeed" },
   { name:"MyCalcTools",       logo:"/brands/myCalTools.png",        url:"https://mycalctools.net" },
   { name:"MyCalendarTools",   logo:"/brands/myCalendarTools.png",   url:"https://mycalendartools.net" },
+  { name:"Wheel Name Picker", logo:"/brands/wheelNamePicker.png",   url:"https://wheelnamepicker.com.au" },
   { name:"ADG Hub",           logo:"/brands/ascensionDigital.png",  url:"https://ascensiondigitalgroup.com" },
 ];
 
@@ -48,6 +49,8 @@ export default function ADGFooter() {
             </a></span>
           </div>
           <div className="flex flex-wrap items-center gap-2 justify-center">
+            <Link to="/about" className="hover:text-[var(--muted)] transition-colors">About</Link>
+            <span>·</span>
             <Link to="/legal/privacy" className="hover:text-[var(--muted)] transition-colors">Privacy</Link>
             <span>·</span>
             <Link to="/legal/terms" className="hover:text-[var(--muted)] transition-colors">Terms</Link>

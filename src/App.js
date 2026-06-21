@@ -9,6 +9,7 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import History from "./pages/History";
 import Legal from "./pages/Legal";
+import About from "./pages/About";
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -27,6 +28,7 @@ function AppRoutes() {
         <Route path="/register"   element={<Register />} />
         <Route path="/history"    element={<Protected><History /></Protected>} />
         <Route path="/legal/:page" element={<Legal />} />
+        <Route path="/about"      element={<About />} />
         <Route path="*"           element={<Navigate to="/" replace />} />
       </Routes>
       <Toaster position="bottom-right" toastOptions={{style:{background:"var(--surface-2)",border:"1px solid var(--border)",color:"var(--text)",fontFamily:"'Outfit',sans-serif",fontSize:"14px"}}}/>

@@ -31,7 +31,7 @@ const WATERMARK_POSITIONS = [
 const TIER_LIMITS = {
   free: { images: 5, batch: 1, upscale: true, watermark_forced: true },
   standard: { images: 100, batch: 10, upscale: true, watermark_forced: false },
-  pro: { images: 99999, batch: 50, upscale: true, watermark_forced: false },
+  pro: { images: 3000, batch: 50, upscale: true, watermark_forced: false },
   owner: { images: 99999, batch: 99999, upscale: true, watermark_forced: false },
 };
 
@@ -177,7 +177,20 @@ export default function Optimiser() {
           try {
             source = await runAiUpscale(img.file);
           } catch (e) {
-            toast.error(`AI upscale failed for ${img.name}: ${e.message} — using standard resize`);
+            if (!user) {
+              toast.error(
+                "Real AI upscaling needs a free account — sign up to unlock it.",
+                {
+                  action: {
+                    label: "Sign up free",
+                    onClick: () => { window.location.href = "/register"; }
+                  },
+                  duration: 8000,
+                }
+              );
+            } else {
+              toast.error(`AI upscale failed for ${img.name}: ${e.message} — using standard resize`);
+            }
           }
         }
 
@@ -379,6 +392,18 @@ export default function Optimiser() {
                   onCrop={applyCrop}
                   onCancel={() => { setCropActive(false); setCropImage(null); }}
                 />
+              </div>
+            )}
+
+            {/* Anonymous signup nudge — shown once after first successful result */}
+            {!user && results.length > 0 && results.some(r => !r.error) && (
+              <div className="glass rounded-2xl px-4 py-3 mt-3 flex items-center justify-between gap-3 border border-[var(--accent)]/30">
+                <p className="text-xs text-[var(--muted)]">
+                  Looking good! <span className="text-white">Create a free account</span> to unlock real AI upscaling, save your history, and remove watermarks.
+                </p>
+                <a href="/register" className="text-xs font-semibold whitespace-nowrap px-3 py-1.5 rounded-lg bg-[var(--accent)] text-black hover:opacity-90">
+                  Sign up free
+                </a>
               </div>
             )}
 
@@ -591,7 +616,7 @@ export default function Optimiser() {
                             <Zap className="w-4 h-4 text-[var(--raven-glow)]" />
                             AI Upscale (Real-ESRGAN)
                           </div>
-                          <p className="text-xs text-[var(--muted)] mt-0.5">True pixel reconstruction via Replicate. ~$0.003/image.</p>
+                          <p className="text-xs text-[var(--muted)] mt-0.5">True pixel reconstruction via real AI upscaling — sharper detail, no blur.</p>
                         </div>
                         <button onClick={() => set("upscale", !settings.upscale)}
                           className={`relative w-11 h-6 rounded-full transition-colors ${settings.upscale ? "bg-[var(--raven)]" : "bg-white/20"}`}>

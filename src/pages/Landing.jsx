@@ -15,7 +15,7 @@ const FEATURES = [
 const TIERS = [
   { name:"Free",     price:"0",  period:"",    desc:"Try it out, no card needed.",           perks:["5 images/month","1 at a time","Watermark on output","All editing tools"], cta:"Start Free", featured:false },
   { name:"Standard", price:"10", period:"/mo", desc:"Regular creators, photographers.",       perks:["100 images/month","Batch of 10","No watermark","AI upscaling","All tools"], cta:"Go Standard", featured:false },
-  { name:"Pro",      price:"15", period:"/mo", desc:"Unlimited volume, unlimited batch size.", perks:["Unlimited images","Batch of 50","No watermark","AI upscaling","Priority processing"], cta:"Go Pro", featured:true },
+  { name:"Pro",      price:"15", period:"/mo", desc:"High volume, no compromises.", perks:["3,000 images/month","Batch of 50","No watermark","AI upscaling","Priority processing"], cta:"Go Pro", featured:true },
 ];
 
 export default function Landing() {
