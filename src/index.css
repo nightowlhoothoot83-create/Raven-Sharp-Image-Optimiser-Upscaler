@@ -1,0 +1,187 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap');
+
+/* Cabinet Grotesk for display - via CDN */
+@import url('https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@400,500,700,800,900&display=swap');
+
+/* ── Variables ─────────────────────────────────────────────────────────── */
+:root {
+  --bg:           #080810;
+  --surface:      #0e0e1a;
+  --surface-2:    #14141f;
+  --border:       rgba(255,255,255,0.08);
+  --text:         #f0eff8;
+  --muted:        #8b8aa0;
+  --subtle:       #4a4960;
+
+  --raven:        #7c5cbf;
+  --raven-glow:   #a78bfa;
+  --raven-deep:   #5b4296;
+  --gold:         #d4af37;
+  --gold-light:   #f0d060;
+  --success:      #34d399;
+  --error:        #f87171;
+  --warning:      #fbbf24;
+
+  --radius:       12px;
+  --radius-lg:    20px;
+  --glow-color:   rgba(124, 92, 191, 0.25);
+}
+
+/* ── Reset ─────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 16px; scroll-behavior: smooth; }
+
+body {
+  font-family: 'Outfit', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+}
+
+/* ── Background texture ────────────────────────────────────────────────── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% -20%, rgba(124,92,191,0.12) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 60%, rgba(124,92,191,0.05) 0%, transparent 50%),
+    radial-gradient(ellipse 40% 30% at 20% 80%, rgba(212,175,55,0.04) 0%, transparent 50%);
+}
+
+#root { position: relative; z-index: 1; }
+
+/* ── Typography ────────────────────────────────────────────────────────── */
+.font-display,
+h1, h2, h3, h4 {
+  font-family: 'Cabinet Grotesk', 'Outfit', system-ui, sans-serif;
+  font-weight: 800;
+}
+.font-mono, code, pre { font-family: 'DM Mono', monospace; }
+
+/* ── Glass card ────────────────────────────────────────────────────────── */
+.glass {
+  background: rgba(14, 14, 26, 0.6);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(124,92,191,0.3); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(124,92,191,0.5); }
+
+/* ── Selection ─────────────────────────────────────────────────────────── */
+::selection { background: rgba(124,92,191,0.4); color: #fff; }
+
+/* ── Focus ─────────────────────────────────────────────────────────────── */
+:focus-visible { outline: 2px solid var(--raven-glow); outline-offset: 2px; }
+
+/* ── Links ─────────────────────────────────────────────────────────────── */
+a { color: inherit; text-decoration: none; transition: color 0.2s; }
+
+/* ── Form inputs ───────────────────────────────────────────────────────── */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="time"],
+textarea,
+select {
+  color: var(--text);
+  background: rgba(255,255,255,0.05);
+}
+input::-webkit-calendar-picker-indicator { filter: invert(1); opacity: 0.5; }
+select option { background: var(--surface-2); color: var(--text); }
+
+/* ── Animations ────────────────────────────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: 0%   50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0%   50%; }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(124,92,191,0.3); }
+  50%       { box-shadow: 0 0 40px rgba(124,92,191,0.6), 0 0 60px rgba(167,139,250,0.2); }
+}
+
+@keyframes spin-slow { to { transform: rotate(360deg); } }
+
+.fade-up { animation: fadeUp 0.4s ease both; }
+.glow-pulse { animation: glow-pulse 3s ease-in-out infinite; }
+.animate-spin-slow { animation: spin-slow 8s linear infinite; }
+
+/* ── Utility classes ───────────────────────────────────────────────────── */
+.text-raven      { color: var(--raven-glow); }
+.text-gold       { color: var(--gold); }
+.text-success    { color: var(--success); }
+.bg-raven        { background-color: var(--raven); }
+.border-raven    { border-color: var(--raven); }
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.line-clamp-4 {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── Sonner toast customisation ────────────────────────────────────────── */
+[data-sonner-toaster] {
+  --normal-bg: var(--surface-2);
+  --normal-border: var(--border);
+  --normal-text: var(--text);
+  --success-bg: rgba(52,211,153,0.1);
+  --success-border: rgba(52,211,153,0.3);
+  --success-text: #34d399;
+  --error-bg: rgba(248,113,113,0.1);
+  --error-border: rgba(248,113,113,0.3);
+  --error-text: #f87171;
+}
+
+/* ── Range input ───────────────────────────────────────────────────────── */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 99px;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--raven-glow);
+  cursor: pointer;
+  border: 2px solid var(--bg);
+  box-shadow: 0 0 8px rgba(167,139,250,0.4);
+}
+
+/* ── Responsive tweaks ─────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  h1 { font-size: clamp(2rem, 8vw, 3rem); }
+}
