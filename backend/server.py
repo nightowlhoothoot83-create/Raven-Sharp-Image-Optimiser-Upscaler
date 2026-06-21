@@ -44,7 +44,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True,
 TIERS = {
     "free":     {"images_per_month": 5,    "batch_size": 1,  "upscale": True,  "watermark": True,  "price": 0},
     "standard": {"images_per_month": 100,  "batch_size": 10, "upscale": True,  "watermark": False, "price": 10},
-    "pro":      {"images_per_month": 99999,"batch_size": 50, "upscale": True,  "watermark": False, "price": 15},
+    "pro":      {"images_per_month": 3000, "batch_size": 50, "upscale": True,  "watermark": False, "price": 15},
     "owner":    {"images_per_month": 99999,"batch_size": 99999,"upscale": True, "watermark": False, "price": 0},
 }
 
