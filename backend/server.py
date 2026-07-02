@@ -55,7 +55,10 @@ STRIPE_PRICES = {
 
 # ── Auth helpers ─────────────────────────────────────────────────────────────
 def hash_pw(pw): return bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()
-def verify_pw(pw, h): return bcrypt.checkpw(pw.encode(), h.encode())
+def verify_pw(pw, h):
+    if isinstance(h, str):
+        h = h.encode('utf-8')
+    return bcrypt.checkpw(pw.encode('utf-8'), h)
 
 def make_access(uid, email):
     return jwt.encode({"sub": uid, "email": email, "type": "access",
