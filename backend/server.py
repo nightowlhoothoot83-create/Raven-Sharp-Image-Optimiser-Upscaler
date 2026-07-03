@@ -37,7 +37,12 @@ api = APIRouter(prefix="/api")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("ravensharp-optimiser")
 
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=False,
+_raw_origins = os.environ.get("CORS_ORIGINS", FRONTEND_URL)
+ALLOWED_ORIGINS = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+if "http://localhost:3000" not in ALLOWED_ORIGINS:
+    ALLOWED_ORIGINS.append("http://localhost:3000")
+
+app.add_middleware(CORSMiddleware, allow_origins=ALLOWED_ORIGINS, allow_credentials=True,
                    allow_methods=["*"], allow_headers=["*"])
 
 # ── Tier config ──────────────────────────────────────────────────────────────
