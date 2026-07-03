@@ -52,4 +52,22 @@ export default function ADGFooter() {
             <h3 className="font-mono uppercase tracking-widest text-[var(--muted)] mb-2">Account</h3>
             <ul className="space-y-1.5">
               <li><Link to="/login" className="text-[var(--subtle)] hover:text-[var(--text)] transition-colors">Sign In</Link></li>
-              <li><Link to="/register" className="text-[var(--subtle)] 
+              <li><Link to="/register" className="text-[var(--subtle)] hover:text-[var(--text)] transition-colors">Create Account</Link></li>
+              <li><Link to="/account" className="text-[var(--subtle)] hover:text-[var(--text)] transition-colors">My Account</Link></li>
+            </ul>
+          </div>
+          <div>
+            <h3 className="font-mono uppercase tracking-widest text-[var(--muted)] mb-2">Company</h3>
+            <ul className="space-y-1.5">
+              <li><a href="https://ascensiondigitalgroup.com" target="_blank" rel="noopener noreferrer" className="text-[var(--subtle)] hover:text-[var(--text)] transition-colors">Ascension Digital Group</a></li>
+              <li><a href="mailto:ascensiondigitalagency@outlook.com" className="text-[var(--subtle)] hover:text-[var(--text)] transition-colors">Support</a></li>
+            </ul>
+          </div>
+        </div>
+        <p className="text-center text-[10px] font-mono uppercase tracking-widest text-[var(--subtle)]">
+          © {new Date().getFullYear()} Ascension Digital Group. All rights reserved.
+        </p>
+      </div>
+    </footer>
+  );
+}

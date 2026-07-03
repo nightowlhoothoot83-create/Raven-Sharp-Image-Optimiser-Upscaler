@@ -14,10 +14,12 @@ api.interceptors.response.use(
     if (err.response?.status === 401 && !err.config._retry) {
       err.config._retry = true;
       try {
-        await api.post("/auth/refresh", {});
+        await api.post("/auth/refresh", {}, { withCredentials: true });
         return api(err.config);
       } catch {
-        window.location.href = "/login";
+        if (!window.location.pathname.startsWith("/login")) {
+          window.location.href = "/login";
+        }
       }
     }
     return Promise.reject(err);

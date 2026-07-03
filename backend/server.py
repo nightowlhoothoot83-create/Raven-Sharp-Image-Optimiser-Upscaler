@@ -27,6 +27,20 @@ REPLICATE_KEY = os.environ.get("REPLICATE_API_KEY", "")
 STRIPE_KEY    = os.environ.get("STRIPE_API_KEY", "")
 OWNER_EMAIL   = os.environ.get("OWNER_EMAIL", "ascensiondigitalagency@outlook.com")
 FRONTEND_URL  = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+CORS_ORIGINS  = [
+    origin.strip()
+    for origin in os.environ.get(
+        "CORS_ORIGINS",
+        ",".join([
+            FRONTEND_URL,
+            "https://opt.raven-sharp.com",
+            "https://raven-sharp-image-optimiser-and-upscaler.pages.dev",
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ]),
+    ).split(",")
+    if origin.strip()
+]
 
 client = AsyncIOMotorClient(MONGO_URL)
 db     = client[DB_NAME]
@@ -37,13 +51,14 @@ api = APIRouter(prefix="/api")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("ravensharp-optimiser")
 
-_raw_origins = os.environ.get("CORS_ORIGINS", FRONTEND_URL)
-ALLOWED_ORIGINS = [o.strip() for o in _raw_origins.split(",") if o.strip()]
-if "http://localhost:3000" not in ALLOWED_ORIGINS:
-    ALLOWED_ORIGINS.append("http://localhost:3000")
-
-app.add_middleware(CORSMiddleware, allow_origins=ALLOWED_ORIGINS, allow_credentials=True,
-                   allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_origin_regex=r"https://.*\.raven-sharp\.com",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ── Tier config ──────────────────────────────────────────────────────────────
 TIERS = {
