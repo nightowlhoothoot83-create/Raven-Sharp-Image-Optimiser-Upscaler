@@ -46,7 +46,7 @@ export default function CropTool({ imageURL, originalWidth, originalHeight, onCr
   }, [dispW, dispH, offsetX, offsetY]);
 
   const startDrag = useCallback((e, handle) => {
-    e.preventDefault();
+    if (e.cancelable) e.preventDefault();
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
     setDrag({ handle, startX: clientX, startY: clientY, startBox: { ...cropBox } });
@@ -54,6 +54,7 @@ export default function CropTool({ imageURL, originalWidth, originalHeight, onCr
 
   const onMove = useCallback((e) => {
     if (!drag || !cropBox) return;
+    if (e.cancelable) e.preventDefault();
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
     const dx = clientX - drag.startX;
@@ -87,13 +88,15 @@ export default function CropTool({ imageURL, originalWidth, originalHeight, onCr
   useEffect(() => {
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", endDrag);
-    window.addEventListener("touchmove", onMove);
+    window.addEventListener("touchmove", onMove, { passive: false });
     window.addEventListener("touchend", endDrag);
+    window.addEventListener("touchcancel", endDrag);
     return () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", endDrag);
-      window.removeEventListener("touchmove", onMove);
+      window.removeEventListener("touchmove", onMove, { passive: false });
       window.removeEventListener("touchend", endDrag);
+      window.removeEventListener("touchcancel", endDrag);
     };
   }, [onMove, endDrag]);
 
@@ -160,7 +163,7 @@ export default function CropTool({ imageURL, originalWidth, originalHeight, onCr
       {/* Canvas area */}
       <div ref={containerRef}
         className="relative rounded-xl overflow-hidden bg-black/50"
-        style={{ height: "360px" }}
+        style={{ height: "360px", touchAction: "none" }}
         onMouseMove={onMove} onTouchMove={onMove}
         onMouseUp={endDrag} onTouchEnd={endDrag}
       >
@@ -188,7 +191,7 @@ export default function CropTool({ imageURL, originalWidth, originalHeight, onCr
 
             {/* Move handle (inside box) */}
             <div style={{ position:"absolute", left:cb.x, top:cb.y, width:cb.w, height:cb.h,
-                         cursor:"move", zIndex:10 }}
+                         cursor:"move", zIndex:10, touchAction:"none" }}
               onMouseDown={e => startDrag(e, "move")}
               onTouchStart={e => startDrag(e, "move")} />
 
@@ -203,6 +206,7 @@ export default function CropTool({ imageURL, originalWidth, originalHeight, onCr
                 borderRadius:2,
                 cursor: CURSORS[h],
                 zIndex:20,
+                touchAction:"none",
               }}
                 onMouseDown={e => startDrag(e, h)}
                 onTouchStart={e => startDrag(e, h)} />

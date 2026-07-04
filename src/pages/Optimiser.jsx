@@ -10,7 +10,8 @@ import JSZip from "jszip";
 import {
   Upload, Download, Wand2, Crop, Type, Sliders, Zap,
   X, Check, ChevronDown, ChevronUp, RefreshCw, Eye,
-  Layers, Settings, AlertCircle, Star, Image
+  Layers, Settings, AlertCircle, Star, Image, Scissors,
+  MoveHorizontal
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -54,6 +55,83 @@ function Slider({ label, value, min, max, step=1, onChange, unit="" }) {
   );
 }
 
+function BeforeAfterSlider({ beforeSrc, afterSrc }) {
+  const containerRef = useRef(null);
+  const [pos, setPos] = useState(50); // percent, 0 = all "before", 100 = all "after"
+  const draggingRef = useRef(false);
+
+  const updateFromClientX = useCallback((clientX) => {
+    const el = containerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const pct = ((clientX - rect.left) / rect.width) * 100;
+    setPos(Math.min(100, Math.max(0, pct)));
+  }, []);
+
+  const onPointerDown = useCallback((e) => {
+    draggingRef.current = true;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    updateFromClientX(clientX);
+  }, [updateFromClientX]);
+
+  const onPointerMove = useCallback((e) => {
+    if (!draggingRef.current) return;
+    if (e.cancelable) e.preventDefault();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    updateFromClientX(clientX);
+  }, [updateFromClientX]);
+
+  const onPointerUp = useCallback(() => { draggingRef.current = false; }, []);
+
+  useEffect(() => {
+    window.addEventListener("mousemove", onPointerMove);
+    window.addEventListener("mouseup", onPointerUp);
+    window.addEventListener("touchmove", onPointerMove, { passive: false });
+    window.addEventListener("touchend", onPointerUp);
+    window.addEventListener("touchcancel", onPointerUp);
+    return () => {
+      window.removeEventListener("mousemove", onPointerMove);
+      window.removeEventListener("mouseup", onPointerUp);
+      window.removeEventListener("touchmove", onPointerMove, { passive: false });
+      window.removeEventListener("touchend", onPointerUp);
+      window.removeEventListener("touchcancel", onPointerUp);
+    };
+  }, [onPointerMove, onPointerUp]);
+
+  return (
+    <div ref={containerRef}
+      className="relative w-full h-full select-none"
+      style={{ touchAction: "none", cursor: "ew-resize" }}
+      onMouseDown={onPointerDown}
+      onTouchStart={onPointerDown}
+    >
+      {/* After image — full, sits underneath */}
+      <img src={afterSrc} alt="after" draggable={false}
+        className="absolute inset-0 w-full h-full object-contain pointer-events-none" />
+
+      {/* Before image — clipped to the left portion */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none"
+        style={{ clipPath: `inset(0 ${100 - pos}% 0 0)` }}>
+        <img src={beforeSrc} alt="before" draggable={false}
+          className="absolute inset-0 w-full h-full object-contain" />
+      </div>
+
+      {/* Labels */}
+      <div className="absolute top-2 left-2 px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider bg-black/60 text-white/80 pointer-events-none">Before</div>
+      <div className="absolute top-2 right-2 px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider bg-black/60 text-white/80 pointer-events-none">After</div>
+
+      {/* Divider handle */}
+      <div className="absolute top-0 bottom-0 pointer-events-none"
+        style={{ left: `${pos}%`, transform: "translateX(-50%)" }}>
+        <div className="w-0.5 h-full bg-white/90 shadow-[0_0_6px_rgba(0,0,0,0.6)] mx-auto" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white shadow-lg flex items-center justify-center">
+          <MoveHorizontal className="w-4 h-4 text-black/70" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Optimiser() {
   const { user } = useAuth();
   const fileRef  = useRef(null);
@@ -68,7 +146,6 @@ export default function Optimiser() {
   const [results, setResults]       = useState([]);
   const [progress, setProgress]     = useState({ current: 0, total: 0, msg: "" });
   const [previewIdx, setPreviewIdx] = useState(0);
-  const [showBefore, setShowBefore] = useState(false);
   const [cropActive, setCropActive] = useState(false);
   const [cropImage, setCropImage]   = useState(null); // { dataURL, w, h, idx }
   const [aiUpscaling, setAiUpscaling] = useState(false);
@@ -420,19 +497,17 @@ export default function Optimiser() {
                     )}
                   </div>
                   {currentResult && !currentResult.error && (
-                    <button onClick={() => setShowBefore(!showBefore)}
-                      className="flex items-center gap-1.5 text-xs text-[var(--muted)] hover:text-[var(--text)] transition-colors">
-                      <Eye className="w-3.5 h-3.5" />
-                      {showBefore ? "Show After" : "Show Before"}
-                    </button>
+                    <div className="flex items-center gap-1.5 text-xs text-[var(--muted)]">
+                      <MoveHorizontal className="w-3.5 h-3.5" />
+                      Drag to compare
+                    </div>
                   )}
                 </div>
                 <div className="relative aspect-video bg-black/40 flex items-center justify-center">
                   {currentResult && !currentResult.error ? (
-                    <img
-                      src={showBefore ? currentResult.originalURL : currentResult.outputURL}
-                      alt="preview"
-                      className="max-w-full max-h-full object-contain"
+                    <BeforeAfterSlider
+                      beforeSrc={currentResult.originalURL}
+                      afterSrc={currentResult.outputURL}
                     />
                   ) : currentImage ? (
                     <img src={currentImage.preview} alt="preview" className="max-w-full max-h-full object-contain" />
@@ -519,6 +594,25 @@ export default function Optimiser() {
                     {p.label}
                   </button>
                 ))}
+              </div>
+            </div>
+
+            {/* Remove Background — promoted here so it's always visible, not buried in a tab */}
+            <div className={`glass rounded-2xl p-5 border transition-all ${
+              settings.removeBg ? "bg-[var(--raven)]/10 border-[var(--raven)]/30" : "border-white/10"
+            }`}>
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <Scissors className="w-4 h-4 text-[var(--raven-glow)] shrink-0" />
+                  <div>
+                    <div className="text-sm font-semibold">Remove Background</div>
+                    <div className="text-xs text-[var(--muted)]">Local AI — no API needed. Slow first run.</div>
+                  </div>
+                </div>
+                <button onClick={() => set("removeBg", !settings.removeBg)}
+                  className={`relative w-11 h-6 rounded-full shrink-0 transition-colors ${settings.removeBg ? "bg-[var(--raven)]" : "bg-white/20"}`}>
+                  <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${settings.removeBg ? "translate-x-6" : "translate-x-1"}`} />
+                </button>
               </div>
             </div>
 
@@ -646,16 +740,6 @@ export default function Optimiser() {
                     <Slider label="Brightness" value={settings.brightness} min={-80} max={80} onChange={v => set("brightness", v)} />
                     <Slider label="Contrast" value={settings.contrast} min={-80} max={80} onChange={v => set("contrast", v)} />
                     <Slider label="Saturation" value={settings.saturation} min={-80} max={80} onChange={v => set("saturation", v)} />
-                    <div className="flex items-center justify-between pt-2 border-t border-white/8">
-                      <div>
-                        <div className="text-sm font-semibold">Remove Background</div>
-                        <div className="text-xs text-[var(--muted)]">Local AI — no API needed. Slow first run.</div>
-                      </div>
-                      <button onClick={() => set("removeBg", !settings.removeBg)}
-                        className={`relative w-11 h-6 rounded-full transition-colors ${settings.removeBg ? "bg-[var(--raven)]" : "bg-white/20"}`}>
-                        <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${settings.removeBg ? "translate-x-6" : "translate-x-1"}`} />
-                      </button>
-                    </div>
                   </>
                 )}
 
