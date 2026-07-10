@@ -245,6 +245,12 @@ export default function Optimiser() {
         let source = img.file;
         let mergedSettings = { ...settings };
 
+        // Capture the TRUE original (before upscale/bg-removal/crop) so the
+        // before/after slider shows a real comparison. Previously "before"
+        // was captured after those steps ran, so upscale/bg-removal changes
+        // were invisible in the slider.
+        const trueOriginalURL = await readFileAsDataURL(img.file);
+
         // Apply per-image crop
         if (img.crop) mergedSettings.crop = img.crop;
 
@@ -276,6 +282,7 @@ export default function Optimiser() {
           mergedSettings,
           msg => setProgress(p => ({ ...p, msg }))
         );
+        result.originalURL = trueOriginalURL;
 
         // Free tier: force watermark
         if (limits.watermark_forced && !mergedSettings.watermarkText) {
@@ -285,6 +292,7 @@ export default function Optimiser() {
             { ...mergedSettings, watermarkText: "ravensharp.app", watermarkPosition: "bottom-right", watermarkOpacity: 0.5, watermarkSize: 18 },
             () => {}
           );
+          watermarkedResult.originalURL = trueOriginalURL;
           out.push({ ...watermarkedResult, originalName: img.name, id: img.id });
         } else {
           out.push({ ...result, originalName: img.name, id: img.id });
