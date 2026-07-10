@@ -1,14 +1,15 @@
 /**
  * Raven Sharp Image Optimiser — Client-side Processing
  *
- * All processing is client-side EXCEPT AI upscaling which calls backend → Replicate Real-ESRGAN.
+ * All processing is client-side EXCEPT AI upscaling and background removal,
+ * which call the backend → Replicate (Real-ESRGAN / background-remover).
  *
  * Includes:
  * - Resize (presets + custom + aspect lock + bleed)
  * - DPI injection (PNG pHYs chunk + JPEG APP0) — print-safe
  * - Sharpen (unsharp mask style)
  * - Brightness / Contrast / Saturation
- * - Background removal (local @imgly — no API needed)
+ * - Background removal (via Replicate backend)
  * - Crop (free, locked aspect, rule-of-thirds)
  * - Watermark (text or image)
  * - Format conversion + quality + maxKB
@@ -16,7 +17,21 @@
  * - EXIF strip
  */
 
-import { removeBackground as imglyRemoveBackground } from "@imgly/background-removal";
+import api from "./api";
+
+// ── Background removal (via Replicate backend, same as AI upscale) ─────────
+async function removeBackground(fileOrObject, onProgress) {
+  onProgress?.("Removing background…");
+  const isFile = fileOrObject instanceof File;
+  const dataURL = isFile ? await readFileAsDataURL(fileOrObject) : fileOrObject.dataURL;
+  const b64  = dataURL.split(",")[1];
+  const mime = isFile ? (fileOrObject.type || "image/jpeg") : (dataURL.match(/:([^;]+);/)?.[1] || "image/png");
+  const baseName = isFile ? fileOrObject.name : (fileOrObject.name || "image");
+
+  const { data } = await api.post("/remove-background", { image_base64: b64, mime });
+  const blob = dataURLtoBlob(`data:${data.mime};base64,${data.base64}`);
+  return new File([blob], baseName.replace(/\.[^.]+$/, "") + ".png", { type: "image/png" });
+}
 
 // ── Presets ────────────────────────────────────────────────────────────────
 export const PRESET_SIZES = [
@@ -280,23 +295,7 @@ async function injectJPEGDPI(blob, dpi) {
   return new Blob([buf], { type: "image/jpeg" });
 }
 
-// ── Background removal (local) ─────────────────────────────────────────────
-async function removeBackground(fileOrObject, onProgress) {
-  // Accept either a real File (from the original upload) or the plain
-  // {dataURL, name} object returned after AI upscaling — @imgly/background-removal
-  // needs a File/Blob, so convert dataURL-based inputs first.
-  const isFile = fileOrObject instanceof File;
-  const input = isFile ? fileOrObject : dataURLtoBlob(fileOrObject.dataURL);
-  const baseName = isFile ? fileOrObject.name : (fileOrObject.name || "image");
 
-  const blob = await imglyRemoveBackground(input, {
-    progress: (key, current, total) => {
-      if (onProgress && total > 0)
-        onProgress(`Removing background — ${key} ${Math.round((current/total)*100)}%`);
-    },
-  });
-  return new File([blob], baseName.replace(/\.[^.]+$/, "") + ".png", { type: "image/png" });
-}
 
 // ── Main process function ──────────────────────────────────────────────────
 /**
