@@ -506,7 +506,7 @@ export default function Optimiser() {
                 <div className="relative aspect-video bg-black/40 flex items-center justify-center">
                   {currentResult && !currentResult.error ? (
                     <BeforeAfterSlider
-                      beforeSrc={currentResult.originalURL}
+                      beforeSrc={currentImage.preview}
                       afterSrc={currentResult.outputURL}
                     />
                   ) : currentImage ? (
