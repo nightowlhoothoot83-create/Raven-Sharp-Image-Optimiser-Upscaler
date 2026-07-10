@@ -281,14 +281,21 @@ async function injectJPEGDPI(blob, dpi) {
 }
 
 // ── Background removal (local) ─────────────────────────────────────────────
-async function removeBackground(file, onProgress) {
-  const blob = await imglyRemoveBackground(file, {
+async function removeBackground(fileOrObject, onProgress) {
+  // Accept either a real File (from the original upload) or the plain
+  // {dataURL, name} object returned after AI upscaling — @imgly/background-removal
+  // needs a File/Blob, so convert dataURL-based inputs first.
+  const isFile = fileOrObject instanceof File;
+  const input = isFile ? fileOrObject : dataURLtoBlob(fileOrObject.dataURL);
+  const baseName = isFile ? fileOrObject.name : (fileOrObject.name || "image");
+
+  const blob = await imglyRemoveBackground(input, {
     progress: (key, current, total) => {
       if (onProgress && total > 0)
         onProgress(`Removing background — ${key} ${Math.round((current/total)*100)}%`);
     },
   });
-  return new File([blob], file.name.replace(/\.[^.]+$/, ".png"), { type: "image/png" });
+  return new File([blob], baseName.replace(/\.[^.]+$/, "") + ".png", { type: "image/png" });
 }
 
 // ── Main process function ──────────────────────────────────────────────────
@@ -305,7 +312,10 @@ export async function processImage(fileOrProcessed, settings, onProgress) {
   let workingFile = fileOrProcessed;
 
   // 1. Background removal (local, no API)
-  if (settings.removeBg && workingFile instanceof File) {
+  // Runs on either the original File upload OR the {dataURL,...} object
+  // returned from AI upscaling — previously this only ran on real File
+  // objects, so it silently skipped whenever upscale was also enabled.
+  if (settings.removeBg) {
     onProgress?.("Removing background…");
     workingFile = await removeBackground(workingFile, onProgress);
   }
