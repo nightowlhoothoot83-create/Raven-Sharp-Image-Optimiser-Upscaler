@@ -293,6 +293,17 @@ async def remove_background_endpoint(payload: RemoveBgIn, user: dict = Depends(g
     AI background removal via Replicate (851-labs/background-remover).
     Reuses the same file-upload pattern as /upscale to avoid 413 payload errors.
     """
+    tier = user.get("tier", "free")
+    tier_cfg = TIERS.get(tier, TIERS["free"])
+
+    # Shares the same monthly image limit/counter as AI upscale — both cost
+    # real Replicate credits, so they draw from one pool per user.
+    if tier != "owner":
+        images_used = user.get("images_used", 0)
+        limit = tier_cfg["images_per_month"]
+        if images_used >= limit:
+            raise HTTPException(403, f"Monthly image limit reached ({limit}). Upgrade your plan.")
+
     if not REPLICATE_KEY:
         raise HTTPException(500, "Replicate API key not configured")
 
@@ -341,6 +352,10 @@ async def remove_background_endpoint(payload: RemoveBgIn, user: dict = Depends(g
                 output_url = data["output"]
                 img_res = await c.get(output_url)
                 b64 = _b64mod.b64encode(img_res.content).decode()
+
+                if tier != "owner":
+                    await db.users.update_one({"id": user["id"]}, {"$inc": {"images_used": 1}})
+
                 return {"base64": b64, "mime": "image/png", "status": "success"}
 
             elif status == "failed":
