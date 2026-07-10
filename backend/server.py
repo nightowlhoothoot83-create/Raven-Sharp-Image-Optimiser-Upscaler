@@ -129,6 +129,10 @@ class UpscaleIn(BaseModel):
     mime: str = "image/jpeg"
     scale: int = 4
 
+class RemoveBgIn(BaseModel):
+    image_base64: str
+    mime: str = "image/jpeg"
+
 class StripeCheckoutIn(BaseModel):
     tier: str; billing: str = "monthly"
 
@@ -281,6 +285,68 @@ async def upscale_image(payload: UpscaleIn, user: dict = Depends(get_user)):
                 raise HTTPException(500, f"Upscaling failed: {data.get('error', 'Unknown error')}")
 
     raise HTTPException(504, "Upscaling timed out — image may be too large")
+
+# ── Background Removal via Replicate ─────────────────────────────────────────
+@api.post("/remove-background")
+async def remove_background_endpoint(payload: RemoveBgIn, user: dict = Depends(get_user)):
+    """
+    AI background removal via Replicate (851-labs/background-remover).
+    Reuses the same file-upload pattern as /upscale to avoid 413 payload errors.
+    """
+    if not REPLICATE_KEY:
+        raise HTTPException(500, "Replicate API key not configured")
+
+    import base64 as _b64mod
+    image_bytes = _b64mod.b64decode(payload.image_base64)
+
+    async with httpx.AsyncClient(timeout=180) as c:
+        upload_res = await c.post(
+            "https://api.replicate.com/v1/files",
+            headers={"Authorization": f"Token {REPLICATE_KEY}"},
+            files={"content": (f"upload.{payload.mime.split('/')[-1]}", image_bytes, payload.mime)},
+        )
+        if upload_res.status_code not in (200, 201):
+            log.error(f"Replicate file upload error: {upload_res.status_code} {upload_res.text}")
+            raise HTTPException(500, "Background removal service error - please try again")
+
+        image_url = upload_res.json().get("urls", {}).get("get") or upload_res.json().get("serving_url")
+        if not image_url:
+            log.error(f"Replicate file upload - no URL in response: {upload_res.text}")
+            raise HTTPException(500, "Background removal service error - please try again")
+
+        # Uses Replicate's model-latest-version endpoint so we don't need to
+        # hardcode a version hash that can go stale.
+        res = await c.post(
+            "https://api.replicate.com/v1/models/851-labs/background-remover/predictions",
+            headers={"Authorization": f"Token {REPLICATE_KEY}",
+                     "Content-Type": "application/json"},
+            json={"input": {"image": image_url}}
+        )
+        if res.status_code != 201:
+            log.error(f"Replicate bg-remove submit error: {res.text}")
+            raise HTTPException(500, "Background removal service error - please try again")
+
+        prediction_id = res.json()["id"]
+
+        for attempt in range(60):
+            await asyncio.sleep(3)
+            poll = await c.get(
+                f"https://api.replicate.com/v1/predictions/{prediction_id}",
+                headers={"Authorization": f"Token {REPLICATE_KEY}"}
+            )
+            data = poll.json()
+            status = data.get("status")
+
+            if status == "succeeded":
+                output_url = data["output"]
+                img_res = await c.get(output_url)
+                b64 = _b64mod.b64encode(img_res.content).decode()
+                return {"base64": b64, "mime": "image/png", "status": "success"}
+
+            elif status == "failed":
+                raise HTTPException(500, f"Background removal failed: {data.get('error', 'Unknown error')}")
+
+    raise HTTPException(504, "Background removal timed out")
 
 # ── Job history ───────────────────────────────────────────────────────────────
 @api.post("/jobs")
