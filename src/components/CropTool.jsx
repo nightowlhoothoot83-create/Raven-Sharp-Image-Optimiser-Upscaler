@@ -16,9 +16,21 @@ export default function CropTool({ imageURL, originalWidth, originalHeight, onCr
 
   useEffect(() => {
     if (!containerRef.current) return;
+
+    // Read the size immediately on mount — don't rely solely on
+    // ResizeObserver's first callback, which can be delayed or skipped
+    // if the container starts at 0×0 (e.g. still inside a tab-switch
+    // transition), leaving containerSize stuck and cropBox never
+    // initializing (which is why nothing appeared and the ratio
+    // buttons silently did nothing — they require cropBox to exist).
+    const rect = containerRef.current.getBoundingClientRect();
+    if (rect.width && rect.height) {
+      setContainerSize({ w: rect.width, h: rect.height });
+    }
+
     const obs = new ResizeObserver(entries => {
       const { width, height } = entries[0].contentRect;
-      setContainerSize({ w: width, h: height });
+      if (width && height) setContainerSize({ w: width, h: height });
     });
     obs.observe(containerRef.current);
     return () => obs.disconnect();
