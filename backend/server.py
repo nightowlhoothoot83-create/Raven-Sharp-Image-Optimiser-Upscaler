@@ -212,9 +212,27 @@ async def upscale_image(payload: UpscaleIn, user: dict = Depends(get_user)):
         raise HTTPException(500, "Replicate API key not configured")
 
     scale = min(max(payload.scale, 2), 4)
-    image_data_url = f"data:{payload.mime};base64,{payload.image_base64}"
+    import base64 as _b64mod
+    image_bytes = _b64mod.b64decode(payload.image_base64)
 
     async with httpx.AsyncClient(timeout=180) as c:
+        # Large images can't be embedded as base64 in the JSON body (413 Payload
+        # Too Large on Replicate's API). Upload to Replicate's file storage first
+        # and reference it by URL instead.
+        upload_res = await c.post(
+            "https://api.replicate.com/v1/files",
+            headers={"Authorization": f"Token {REPLICATE_KEY}"},
+            files={"content": (f"upload.{payload.mime.split('/')[-1]}", image_bytes, payload.mime)},
+        )
+        if upload_res.status_code not in (200, 201):
+            log.error(f"Replicate file upload error: {upload_res.status_code} {upload_res.text}")
+            raise HTTPException(500, "Upscaling service error - please try again")
+
+        image_url = upload_res.json().get("urls", {}).get("get") or upload_res.json().get("serving_url")
+        if not image_url:
+            log.error(f"Replicate file upload - no URL in response: {upload_res.text}")
+            raise HTTPException(500, "Upscaling service error - please try again")
+
         # Submit to Replicate Real-ESRGAN
         res = await c.post(
             "https://api.replicate.com/v1/predictions",
@@ -223,7 +241,7 @@ async def upscale_image(payload: UpscaleIn, user: dict = Depends(get_user)):
             json={
                 "version": "42fed1c4974146d4d2414e2be2c5277c7fcf05fcc3a73abf41610695738c1d7b",
                 "input": {
-                    "image": image_data_url,
+                    "image": image_url,
                     "scale": scale,
                     "face_enhance": False,
                 }
@@ -231,7 +249,7 @@ async def upscale_image(payload: UpscaleIn, user: dict = Depends(get_user)):
         )
         if res.status_code != 201:
             log.error(f"Replicate submit error: {res.text}")
-            raise HTTPException(500, "Upscaling service error — please try again")
+            raise HTTPException(500, "Upscaling service error - please try again")
 
         prediction_id = res.json()["id"]
 
