@@ -173,6 +173,7 @@ export default function Optimiser() {
   }, [onFiles]);
 
   const removeImage = id => setImages(prev => prev.filter(i => i.id !== id));
+  const toggleRemoveBg = (id) => setImages(prev => prev.map(i => i.id === id ? { ...i, removeBg: !i.removeBg } : i));
 
   // ── Crop ──────────────────────────────────────────────────────────────────
   const openCrop = async (idx) => {
@@ -253,6 +254,10 @@ export default function Optimiser() {
 
         // Apply per-image crop
         if (img.crop) mergedSettings.crop = img.crop;
+
+        // Apply per-image background removal — only remove BG on images
+        // specifically flagged, not globally on everything
+        mergedSettings.removeBg = !!img.removeBg;
 
         // AI upscale (if enabled and user wants it)
         if (settings.upscale && REPLICATE_UPSCALE_ENABLED) {
@@ -449,9 +454,16 @@ export default function Optimiser() {
                       onClick={() => setPreviewIdx(i)}
                       className={`relative cursor-pointer rounded-xl overflow-hidden w-20 h-20 transition-all ${previewIdx === i ? "ring-2 ring-[var(--raven-glow)]" : "opacity-70 hover:opacity-100"}`}>
                       <img src={img.preview} alt={img.name} className="w-full h-full object-cover" />
+                      {/* Crop badge */}
                       {img.crop && (
                         <div className="absolute top-1 left-1 w-4 h-4 rounded bg-[var(--raven)] flex items-center justify-center">
                           <Crop className="w-2.5 h-2.5 text-white" />
+                        </div>
+                      )}
+                      {/* Remove BG badge */}
+                      {img.removeBg && (
+                        <div className="absolute bottom-1 left-1 rounded bg-purple-500/80 px-1 py-0.5 flex items-center justify-center">
+                          <span className="text-white text-[8px] font-bold leading-none">BG</span>
                         </div>
                       )}
                       <button onClick={e => { e.stopPropagation(); removeImage(img.id); }}
@@ -511,22 +523,14 @@ export default function Optimiser() {
                     </div>
                   )}
                 </div>
-                <div className="relative aspect-video bg-black/20 flex items-center justify-center">
+                <div className="relative aspect-video bg-black/40 flex items-center justify-center">
                   {currentResult && !currentResult.error ? (
                     <BeforeAfterSlider
-                      beforeSrc={currentResult.originalURL || currentImage.preview}
+                      beforeSrc={currentImage.preview}
                       afterSrc={currentResult.outputURL}
                     />
                   ) : currentImage ? (
-                    <div className="relative w-full h-full flex items-center justify-center">
-                      <img src={currentImage.preview} alt="preview" className="max-w-full max-h-full object-contain" />
-                      {processing && (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 rounded">
-                          <div className="w-8 h-8 border-2 border-white/20 border-t-[var(--raven-glow)] rounded-full animate-spin mb-3" />
-                          <p className="text-xs text-white/70 text-center px-4">{progress.msg || "Processing…"}</p>
-                        </div>
-                      )}
-                    </div>
+                    <img src={currentImage.preview} alt="preview" className="max-w-full max-h-full object-contain" />
                   ) : null}
 
                   {/* Stats overlay */}
@@ -613,23 +617,74 @@ export default function Optimiser() {
               </div>
             </div>
 
-            {/* Remove Background — promoted here so it's always visible, not buried in a tab */}
-            <div className={`glass rounded-2xl p-5 border transition-all ${
-              settings.removeBg ? "bg-[var(--raven)]/10 border-[var(--raven)]/30" : "border-white/10"
-            }`}>
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5">
-                  <Scissors className="w-4 h-4 text-[var(--raven-glow)] shrink-0" />
-                  <div>
-                    <div className="text-sm font-semibold">Remove Background</div>
-                    <div className="text-xs text-[var(--muted)]">Local AI — no API needed. Slow first run.</div>
+            {/* Remove Background — per-image selection */}
+            <div className="glass rounded-2xl p-5 border border-white/10">
+              <div className="flex items-center gap-2.5 mb-4">
+                <Scissors className="w-4 h-4 text-[var(--raven-glow)] shrink-0" />
+                <div>
+                  <div className="text-sm font-semibold">Remove Background</div>
+                  <div className="text-xs text-[var(--muted)]">
+                    AI-powered via Replicate · Select which images to process
                   </div>
                 </div>
-                <button onClick={() => set("removeBg", !settings.removeBg)}
-                  className={`relative w-11 h-6 rounded-full shrink-0 transition-colors ${settings.removeBg ? "bg-[var(--raven)]" : "bg-white/20"}`}>
-                  <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${settings.removeBg ? "translate-x-6" : "translate-x-1"}`} />
-                </button>
               </div>
+
+              {images.length === 0 ? (
+                <p className="text-xs text-[var(--subtle)]">Drop images first to select which ones to remove background from</p>
+              ) : (
+                <>
+                  {/* Quick select all / none */}
+                  <div className="flex gap-2 mb-3">
+                    <button
+                      onClick={() => setImages(prev => prev.map(i => ({ ...i, removeBg: true })))}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-[var(--raven)]/20 text-[var(--raven-glow)] border border-[var(--raven)]/30 hover:bg-[var(--raven)]/30 transition-all"
+                    >
+                      Select All
+                    </button>
+                    <button
+                      onClick={() => setImages(prev => prev.map(i => ({ ...i, removeBg: false })))}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-white/5 text-[var(--muted)] border border-white/10 hover:bg-white/10 transition-all"
+                    >
+                      Clear All
+                    </button>
+                    {images.some(i => i.removeBg) && (
+                      <span className="text-xs text-purple-400 self-center ml-1">
+                        {images.filter(i => i.removeBg).length} selected
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Per-image toggles */}
+                  <div className="space-y-2">
+                    {images.map((img, idx) => (
+                      <div
+                        key={img.id}
+                        onClick={() => toggleRemoveBg(img.id)}
+                        className={`flex items-center gap-3 p-2.5 rounded-xl cursor-pointer border transition-all ${
+                          img.removeBg
+                            ? "bg-purple-500/10 border-purple-500/30"
+                            : "bg-white/3 border-white/8 hover:bg-white/6"
+                        }`}
+                      >
+                        <img
+                          src={img.preview}
+                          alt={img.name}
+                          className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-medium truncate text-[var(--text)]">{img.name}</div>
+                          <div className="text-[10px] text-[var(--muted)] mt-0.5">
+                            {img.removeBg ? "✓ Background will be removed" : "Background kept"}
+                          </div>
+                        </div>
+                        <div className={`relative w-9 h-5 rounded-full flex-shrink-0 transition-colors ${img.removeBg ? "bg-purple-500" : "bg-white/20"}`}>
+                          <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${img.removeBg ? "translate-x-4" : "translate-x-0.5"}`} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Tab selector */}
