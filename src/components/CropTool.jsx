@@ -17,28 +17,15 @@ export default function CropTool({ imageURL, originalWidth, originalHeight, onCr
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const measure = () => {
-      if (!containerRef.current) return;
-      // Use offsetWidth/offsetHeight for reliable measurement
-      // getBoundingClientRect can return 0 during CSS transitions
-      const w = containerRef.current.offsetWidth;
-      const h = containerRef.current.offsetHeight;
-      if (w && h) {
-        setContainerSize({ w, h });
-        return true;
-      }
-      return false;
-    };
-
-    // Try immediately
-    if (!measure()) {
-      // If container not ready, retry after paint
-      requestAnimationFrame(() => {
-        if (!measure()) {
-          // Last resort: short timeout
-          setTimeout(measure, 100);
-        }
-      });
+    // Read the size immediately on mount — don't rely solely on
+    // ResizeObserver's first callback, which can be delayed or skipped
+    // if the container starts at 0×0 (e.g. still inside a tab-switch
+    // transition), leaving containerSize stuck and cropBox never
+    // initializing (which is why nothing appeared and the ratio
+    // buttons silently did nothing — they require cropBox to exist).
+    const rect = containerRef.current.getBoundingClientRect();
+    if (rect.width && rect.height) {
+      setContainerSize({ w: rect.width, h: rect.height });
     }
 
     const obs = new ResizeObserver(entries => {
@@ -187,8 +174,13 @@ export default function CropTool({ imageURL, originalWidth, originalHeight, onCr
 
       {/* Canvas area */}
       <div ref={containerRef}
-        className="relative rounded-xl overflow-hidden bg-black/50"
-        style={{ height: "360px", width: "100%", touchAction: "none" }}
+        className="relative rounded-xl overflow-hidden bg-black/20"
+        style={{
+          height: originalWidth && originalHeight
+            ? `${Math.min(480, Math.round(360 * (originalHeight / originalWidth)))}px`
+            : "360px",
+          touchAction: "none"
+        }}
         onMouseMove={onMove} onTouchMove={onMove}
         onMouseUp={endDrag} onTouchEnd={endDrag}
       >
@@ -197,13 +189,14 @@ export default function CropTool({ imageURL, originalWidth, originalHeight, onCr
           style={{ position:"absolute", left: offsetX, top: offsetY,
                    width: dispW, height: dispH, pointerEvents:"none", userSelect:"none" }} />
 
-        {/* Dark overlay outside crop */}
+        {/* Dark overlay outside crop using clip-path cutout */}
         {cb && (
           <>
-            <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.55)", pointerEvents:"none" }} />
-            {/* Clear crop area */}
-            <div style={{ position:"absolute", left:cb.x, top:cb.y, width:cb.w, height:cb.h,
-                         boxShadow:"0 0 0 9999px rgba(0,0,0,0.55)", pointerEvents:"none" }} />
+            <div style={{
+              position:"absolute", inset:0, pointerEvents:"none",
+              background:`rgba(0,0,0,0.55)`,
+              clipPath:`polygon(0% 0%, 0% 100%, ${cb.x}px 100%, ${cb.x}px ${cb.y}px, ${cb.x+cb.w}px ${cb.y}px, ${cb.x+cb.w}px ${cb.y+cb.h}px, ${cb.x}px ${cb.y+cb.h}px, ${cb.x}px 100%, 100% 100%, 100% 0%)`,
+            }} />
 
             {/* Rule of thirds grid */}
             <svg style={{ position:"absolute", left:cb.x, top:cb.y, width:cb.w, height:cb.h, pointerEvents:"none" }}>

@@ -178,32 +178,11 @@ export default function Optimiser() {
   const openCrop = async (idx) => {
     const img = images[idx];
     if (!img) return;
-    try {
-      // Use preview blob URL if file is unavailable (e.g. after processing)
-      // Fall back to img.file if preview is stale
-      let dataURL;
-      if (img.file) {
-        dataURL = await readFileAsDataURL(img.file);
-      } else if (img.preview) {
-        // Convert blob URL to dataURL via canvas
-        const tempImg = await loadImage(img.preview);
-        const c = document.createElement("canvas");
-        c.width = tempImg.naturalWidth;
-        c.height = tempImg.naturalHeight;
-        c.getContext("2d").drawImage(tempImg, 0, 0);
-        dataURL = c.toDataURL("image/png");
-      } else {
-        toast.error("Cannot open crop — image not available");
-        return;
-      }
-      const el = await loadImage(dataURL);
-      setCropImage({ dataURL, w: el.naturalWidth, h: el.naturalHeight, idx });
-      setCropActive(true);
-      setActiveTab("crop");
-    } catch (err) {
-      console.error("openCrop error:", err);
-      toast.error("Could not open crop tool — try refreshing the image");
-    }
+    const dataURL = await readFileAsDataURL(img.file);
+    const el      = await loadImage(dataURL);
+    setCropImage({ dataURL, w: el.naturalWidth, h: el.naturalHeight, idx });
+    setCropActive(true);
+    setActiveTab("crop");
   };
 
   const applyCrop = (rect) => {
@@ -532,14 +511,22 @@ export default function Optimiser() {
                     </div>
                   )}
                 </div>
-                <div className="relative aspect-video flex items-center justify-center" style={{background: settings.removeBg ? "url('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2220%22 height=%2220%22%3E%3Crect width=%2210%22 height=%2210%22 fill=%22%23555%22/%3E%3Crect x=%2210%22 y=%2210%22 width=%2210%22 height=%2210%22 fill=%22%23555%22/%3E%3Crect x=%2210%22 y=%220%22 width=%2210%22 height=%2210%22 fill=%22%23333%22/%3E%3Crect x=%220%22 y=%2210%22 width=%2210%22 height=%2210%22 fill=%22%23333%22/%3E%3C/svg%3E')" : "rgba(0,0,0,0.4)"}}>
+                <div className="relative aspect-video bg-black/20 flex items-center justify-center">
                   {currentResult && !currentResult.error ? (
                     <BeforeAfterSlider
                       beforeSrc={currentResult.originalURL || currentImage.preview}
                       afterSrc={currentResult.outputURL}
                     />
                   ) : currentImage ? (
-                    <img src={currentImage.preview} alt="preview" className="max-w-full max-h-full object-contain" />
+                    <div className="relative w-full h-full flex items-center justify-center">
+                      <img src={currentImage.preview} alt="preview" className="max-w-full max-h-full object-contain" />
+                      {processing && (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 rounded">
+                          <div className="w-8 h-8 border-2 border-white/20 border-t-[var(--raven-glow)] rounded-full animate-spin mb-3" />
+                          <p className="text-xs text-white/70 text-center px-4">{progress.msg || "Processing…"}</p>
+                        </div>
+                      )}
+                    </div>
                   ) : null}
 
                   {/* Stats overlay */}
@@ -635,7 +622,7 @@ export default function Optimiser() {
                   <Scissors className="w-4 h-4 text-[var(--raven-glow)] shrink-0" />
                   <div>
                     <div className="text-sm font-semibold">Remove Background</div>
-                    <div className="text-xs text-[var(--muted)]">AI-powered via Replicate — uses your monthly image credits.</div>
+                    <div className="text-xs text-[var(--muted)]">Local AI — no API needed. Slow first run.</div>
                   </div>
                 </div>
                 <button onClick={() => set("removeBg", !settings.removeBg)}
