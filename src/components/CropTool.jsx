@@ -17,15 +17,28 @@ export default function CropTool({ imageURL, originalWidth, originalHeight, onCr
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // Read the size immediately on mount — don't rely solely on
-    // ResizeObserver's first callback, which can be delayed or skipped
-    // if the container starts at 0×0 (e.g. still inside a tab-switch
-    // transition), leaving containerSize stuck and cropBox never
-    // initializing (which is why nothing appeared and the ratio
-    // buttons silently did nothing — they require cropBox to exist).
-    const rect = containerRef.current.getBoundingClientRect();
-    if (rect.width && rect.height) {
-      setContainerSize({ w: rect.width, h: rect.height });
+    const measure = () => {
+      if (!containerRef.current) return;
+      // Use offsetWidth/offsetHeight for reliable measurement
+      // getBoundingClientRect can return 0 during CSS transitions
+      const w = containerRef.current.offsetWidth;
+      const h = containerRef.current.offsetHeight;
+      if (w && h) {
+        setContainerSize({ w, h });
+        return true;
+      }
+      return false;
+    };
+
+    // Try immediately
+    if (!measure()) {
+      // If container not ready, retry after paint
+      requestAnimationFrame(() => {
+        if (!measure()) {
+          // Last resort: short timeout
+          setTimeout(measure, 100);
+        }
+      });
     }
 
     const obs = new ResizeObserver(entries => {
@@ -175,7 +188,7 @@ export default function CropTool({ imageURL, originalWidth, originalHeight, onCr
       {/* Canvas area */}
       <div ref={containerRef}
         className="relative rounded-xl overflow-hidden bg-black/50"
-        style={{ height: "360px", touchAction: "none" }}
+        style={{ height: "360px", width: "100%", touchAction: "none" }}
         onMouseMove={onMove} onTouchMove={onMove}
         onMouseUp={endDrag} onTouchEnd={endDrag}
       >
