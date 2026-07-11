@@ -514,7 +514,7 @@ export default function Optimiser() {
                 <div className="relative aspect-video bg-black/40 flex items-center justify-center">
                   {currentResult && !currentResult.error ? (
                     <BeforeAfterSlider
-                      beforeSrc={currentImage.preview}
+                      beforeSrc={currentResult.originalURL || currentImage.preview}
                       afterSrc={currentResult.outputURL}
                     />
                   ) : currentImage ? (
@@ -614,7 +614,7 @@ export default function Optimiser() {
                   <Scissors className="w-4 h-4 text-[var(--raven-glow)] shrink-0" />
                   <div>
                     <div className="text-sm font-semibold">Remove Background</div>
-                    <div className="text-xs text-[var(--muted)]">Local AI — no API needed. Slow first run.</div>
+                    <div className="text-xs text-[var(--muted)]">AI-powered via Replicate — uses your monthly image credits.</div>
                   </div>
                 </div>
                 <button onClick={() => set("removeBg", !settings.removeBg)}

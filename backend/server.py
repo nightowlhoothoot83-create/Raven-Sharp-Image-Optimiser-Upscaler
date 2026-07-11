@@ -16,7 +16,7 @@ from typing import List, Optional, Dict, Any
 
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from pymongo import AsyncMongoClient as AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
 
 # ── Config ──────────────────────────────────────────────────────────────────
@@ -426,6 +426,127 @@ async def stripe_webhook(request: Request):
     return {"ok": True}
 
 # ── Health ─────────────────────────────────────────────────────────────────────
+
+class ForgotPasswordIn(BaseModel):
+    email: str
+
+class ResetPasswordIn(BaseModel):
+    token: str
+    new_password: str
+
+# Simple in-memory token store (upgrade to DB for production)
+_reset_tokens: dict = {}
+
+@api.post("/auth/forgot-password")
+async def forgot_password(payload: ForgotPasswordIn):
+    """Generate a password reset token. In production, email this to the user."""
+    email = payload.email.lower().strip()
+    user = await db.users.find_one({"email": email})
+    if not user:
+        # Don't reveal if email exists
+        return {"message": "If that email exists, a reset link has been sent."}
+    token = str(uuid.uuid4())
+    _reset_tokens[token] = {"email": email, "expires": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()}
+    # In production: send email with reset link
+    # For now: return token directly (owner can use it)
+    log.info(f"Password reset token for {email}: {token}")
+    return {
+        "message": "If that email exists, a reset link has been sent.",
+        "debug_token": token if email == OWNER_EMAIL.lower() else None
+    }
+
+@api.post("/auth/reset-password")
+async def reset_password(payload: ResetPasswordIn, response: Response):
+    """Reset password using a valid token."""
+    entry = _reset_tokens.get(payload.token)
+    if not entry:
+        raise HTTPException(400, "Invalid or expired reset token")
+    from datetime import datetime as _dt
+    if _dt.fromisoformat(entry["expires"]) < datetime.now(timezone.utc):
+        del _reset_tokens[payload.token]
+        raise HTTPException(400, "Reset token has expired")
+    email = entry["email"]
+    new_hash = hash_pw(payload.new_password)
+    result = await db.users.update_one({"email": email}, {"$set": {"password_hash": new_hash}})
+    if result.matched_count == 0:
+        raise HTTPException(404, "User not found")
+    del _reset_tokens[payload.token]
+    return {"message": "Password reset successfully. Please sign in."}
+
+@api.get("/auth/verify-reset-token/{token}")
+async def verify_reset_token(token: str):
+    """Check if a reset token is valid before showing the reset form."""
+    entry = _reset_tokens.get(token)
+    if not entry:
+        raise HTTPException(400, "Invalid or expired reset token")
+    from datetime import datetime as _dt
+    if _dt.fromisoformat(entry["expires"]) < datetime.now(timezone.utc):
+        del _reset_tokens[token]
+        raise HTTPException(400, "Reset token has expired")
+    return {"valid": True, "email": entry["email"]}
+
+
+@api.get("/health/detailed")
+async def health_detailed():
+    """Detailed health check for monitoring dashboard."""
+    checks = {}
+    
+    # MongoDB check
+    try:
+        await db.command("ping")
+        checks["mongodb"] = {"status": "ok"}
+    except Exception as e:
+        checks["mongodb"] = {"status": "error", "detail": str(e)}
+    
+    # Replicate check
+    try:
+        async with httpx.AsyncClient(timeout=10) as c:
+            r = await c.get(
+                "https://api.replicate.com/v1/account",
+                headers={"Authorization": f"Token {REPLICATE_KEY}"}
+            )
+            checks["replicate"] = {"status": "ok" if r.status_code == 200 else "error", "code": r.status_code}
+    except Exception as e:
+        checks["replicate"] = {"status": "error", "detail": str(e)}
+    
+    # Stripe check
+    checks["stripe"] = {"status": "ok" if STRIPE_KEY else "not_configured"}
+    
+    overall = "ok" if all(v["status"] == "ok" for v in checks.values()) else "degraded"
+    return {
+        "status": overall,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "services": checks
+    }
+
+@api.get("/health/stats")
+async def health_stats(user: dict = Depends(get_user)):
+    """Usage stats for owner dashboard."""
+    if user.get("tier") != "owner":
+        raise HTTPException(403, "Owner only")
+    
+    total_users = await db.users.count_documents({})
+    total_jobs = await db.jobs.count_documents({})
+    
+    # Users by tier
+    pipeline = [{"$group": {"_id": "$tier", "count": {"$sum": 1}}}]
+    tier_cursor = db.users.aggregate(pipeline)
+    tiers = {}
+    async for doc in tier_cursor:
+        tiers[doc["_id"]] = doc["count"]
+    
+    # Jobs today
+    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    jobs_today = await db.jobs.count_documents({"created_at": {"$gte": today}})
+    
+    return {
+        "total_users": total_users,
+        "total_jobs": total_jobs,
+        "jobs_today": jobs_today,
+        "users_by_tier": tiers,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
 @api.get("/")
 async def root():
     return {"service": "raven-sharp-optimiser", "status": "ok",

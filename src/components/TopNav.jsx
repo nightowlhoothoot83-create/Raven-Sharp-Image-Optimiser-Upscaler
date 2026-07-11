@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
-import { Wand2, Clock, Settings, LogOut, ChevronDown, Menu, X } from "lucide-react";
+import { Activity, Link, useLocation, useNavigate } from "react-router-dom";
+import { Activity, useAuth } from "../context/AuthContext";
+import { Activity, Wand2, Clock, Settings, LogOut, ChevronDown, Menu, X } from "lucide-react";
 
 export default function TopNav() {
   const { user, logout } = useAuth();
@@ -67,6 +67,12 @@ export default function TopNav() {
                 </button>
                 {userMenu && (
                   <div className="absolute right-0 top-full mt-2 w-44 rounded-xl bg-[var(--surface)] border border-white/10 shadow-2xl overflow-hidden z-50">
+                    {user?.tier === "owner" && (
+                      <Link to="/health" onClick={() => setUserMenu(false)}
+                        className="flex items-center gap-2 px-4 py-2.5 hover:bg-white/5 text-sm text-emerald-400 transition-colors">
+                        <Activity className="w-4 h-4" /> System Monitor
+                      </Link>
+                    )}
                     <Link to="/account" onClick={() => setUserMenu(false)}
                       className="flex items-center gap-2 px-4 py-3 text-sm text-[var(--muted)] hover:bg-white/5 hover:text-[var(--text)] transition-colors">
                       <Settings className="w-4 h-4" /> Account
