@@ -347,7 +347,9 @@ export async function processImage(fileOrProcessed, settings, onProgress) {
 
   // 4. Crop (applied first to get the right source dimensions)
   let sourceImg = img;
-  let sourceDataURL = dataURL;
+  // Only used if cropping (reassigned below) — no need to carry the removed
+  // dataURL variable here since it's unused otherwise.
+  let sourceDataURL = null;
   if (s.crop) {
     const { x, y, width: cw, height: ch } = s.crop;
     const cropCanvas = document.createElement("canvas");

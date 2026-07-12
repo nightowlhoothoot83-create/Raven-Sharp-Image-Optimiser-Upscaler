@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { Activity, Link, useLocation, useNavigate } from "react-router-dom";
-import { Activity, useAuth } from "../context/AuthContext";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import { Activity, Wand2, Clock, Settings, LogOut, ChevronDown, Menu, X } from "lucide-react";
 
 export default function TopNav() {
