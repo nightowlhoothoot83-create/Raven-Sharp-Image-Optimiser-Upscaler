@@ -11,6 +11,8 @@ load_dotenv(ROOT_DIR / ".env")
 
 import os, uuid, json, logging, asyncio
 import bcrypt, jwt, httpx
+import io
+from PIL import Image
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any
 
@@ -154,6 +156,52 @@ async def get_user(request: Request):
     except jwt.ExpiredSignatureError: raise HTTPException(401, "Token expired")
     except Exception: raise HTTPException(401, "Invalid token")
 
+def _downscale_if_needed(image_bytes: bytes, mime: str, max_pixels: int = 2_000_000) -> bytes:
+    """Replicate's Real-ESRGAN and background-remover models run out of GPU
+    memory above ~2,096,704 total pixels (confirmed via a real error message:
+    'total number of pixels ... greater than the max size that fits in GPU
+    memory on this hardware, 2096704'). Rather than let large photos fail
+    outright, downscale before upload — the AI upscale step re-enlarges the
+    image afterward anyway, so a pre-shrink doesn't cost real quality for
+    that path, and for background removal the mask is applied back onto the
+    original-resolution image, not the shrunk one.
+    Keeps a safety margin below the actual limit (2,000,000 vs 2,096,704)."""
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        w, h = img.size
+        total = w * h
+        if total <= max_pixels:
+            return image_bytes
+        scale = (max_pixels / total) ** 0.5
+        new_w, new_h = max(1, int(w * scale)), max(1, int(h * scale))
+        img = img.convert("RGB") if img.mode not in ("RGB", "RGBA") else img
+        resized = img.resize((new_w, new_h), Image.LANCZOS)
+        buf = io.BytesIO()
+        fmt = "PNG" if "png" in mime.lower() else "JPEG"
+        resized.save(buf, format=fmt, quality=92 if fmt == "JPEG" else None)
+        log.info(f"Downscaled oversized image {w}x{h} ({total} px) -> {new_w}x{new_h} before sending to Replicate")
+        return buf.getvalue()
+    except Exception as e:
+        # If PIL can't process it for any reason, fall back to the original
+        # bytes and let Replicate's own error handling take over — better
+        # than crashing the whole request on a resize helper.
+        log.warning(f"Downscale-if-needed skipped due to error: {e}")
+        return image_bytes
+
+def _replicate_error_detail(res) -> str:
+    """Extract a clean, specific error message from a Replicate API error
+    response, instead of showing the customer a generic 'service error'
+    with no useful detail. Falls back gracefully if the response isn't the
+    JSON shape we expect."""
+    try:
+        body = res.json()
+        detail = body.get("detail") or body.get("error") or body.get("title")
+        if detail:
+            return str(detail)
+    except Exception:
+        pass
+    return f"Replicate returned HTTP {res.status_code} — please try again or try a smaller image"
+
 async def send_email(to: str, subject: str, html: str) -> bool:
     """Send an email via Resend's HTTP API. Returns True if sent, False if
     RESEND_API_KEY isn't configured or the send failed — callers should treat
@@ -287,6 +335,7 @@ async def upscale_image(payload: UpscaleIn, user: dict = Depends(get_user)):
     scale = min(max(payload.scale, 2), 4)
     import base64 as _b64mod
     image_bytes = _b64mod.b64decode(payload.image_base64)
+    image_bytes = _downscale_if_needed(image_bytes, payload.mime)
 
     async with httpx.AsyncClient(timeout=180) as c:
         # Large images can't be embedded as base64 in the JSON body (413 Payload
@@ -322,7 +371,7 @@ async def upscale_image(payload: UpscaleIn, user: dict = Depends(get_user)):
         )
         if res.status_code != 201:
             log.error(f"Replicate submit error: {res.text}")
-            raise HTTPException(500, "Upscaling service error - please try again")
+            raise HTTPException(500, f"Upscaling failed: {_replicate_error_detail(res)}")
 
         prediction_id = res.json()["id"]
 
@@ -378,6 +427,7 @@ async def remove_background_endpoint(payload: RemoveBgIn, user: dict = Depends(g
 
     import base64 as _b64mod
     image_bytes = _b64mod.b64decode(payload.image_base64)
+    image_bytes = _downscale_if_needed(image_bytes, payload.mime)
 
     async with httpx.AsyncClient(timeout=180) as c:
         upload_res = await c.post(
@@ -404,7 +454,7 @@ async def remove_background_endpoint(payload: RemoveBgIn, user: dict = Depends(g
         )
         if res.status_code != 201:
             log.error(f"Replicate bg-remove submit error: {res.text}")
-            raise HTTPException(500, "Background removal service error - please try again")
+            raise HTTPException(500, f"Background removal failed: {_replicate_error_detail(res)}")
 
         prediction_id = res.json()["id"]
 
