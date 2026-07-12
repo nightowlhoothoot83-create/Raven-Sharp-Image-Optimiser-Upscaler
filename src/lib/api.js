@@ -22,6 +22,12 @@ api.interceptors.response.use(
         }
       }
     }
+    // Normalize the real backend error message + ID onto the error object so
+    // every call site can show the customer something specific and reportable
+    // instead of a generic "something went wrong".
+    const data = err.response?.data;
+    err.userMessage = data?.error || data?.detail || err.message || "Something went wrong.";
+    err.errorId = data?.error_id || null;
     return Promise.reject(err);
   }
 );

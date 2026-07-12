@@ -115,9 +115,18 @@ export default function CropTool({ imageURL, originalWidth, originalHeight, onCr
   const applyRatio = (ratio) => {
     setSelectedRatio(ratio);
     if (!cropBox || !ratio) return;
-    const { x, y, w } = cropBox;
-    const h = w / ratio;
-    if (y + h <= offsetY + dispH) setCropBox({ x, y, w, h });
+    const { x, y } = cropBox;
+    let w = cropBox.w;
+    let h = w / ratio;
+    // If the height needed doesn't fit in the available space below (or the
+    // width doesn't fit to the right), shrink to the largest box that fits
+    // this ratio within the image bounds — instead of silently doing nothing,
+    // which is what made the ratio buttons appear broken.
+    const maxW = offsetX + dispW - x;
+    const maxH = offsetY + dispH - y;
+    if (h > maxH) { h = maxH; w = h * ratio; }
+    if (w > maxW) { w = maxW; h = w / ratio; }
+    setCropBox({ x, y, w, h });
   };
 
   const resetCrop = () => {
@@ -213,21 +222,29 @@ export default function CropTool({ imageURL, originalWidth, originalHeight, onCr
               onMouseDown={e => startDrag(e, "move")}
               onTouchStart={e => startDrag(e, "move")} />
 
-            {/* Resize handles */}
+            {/* Resize handles — visual marker stays small, but the actual
+                clickable/touchable hit area is much bigger (32px) since a
+                10px target is very hard to hit precisely on a phone screen */}
             {HANDLES.map(h => (
               <div key={h} style={{
                 position:"absolute",
-                left: handlePos[h].left, top: handlePos[h].top,
-                width:10, height:10,
-                background:"white",
-                border:"2px solid var(--raven-glow)",
-                borderRadius:2,
+                left: handlePos[h].left - 11, top: handlePos[h].top - 11,
+                width: 32, height: 32,
                 cursor: CURSORS[h],
-                zIndex:20,
-                touchAction:"none",
+                zIndex: 20,
+                touchAction: "none",
+                display: "flex", alignItems: "center", justifyContent: "center",
               }}
                 onMouseDown={e => startDrag(e, h)}
-                onTouchStart={e => startDrag(e, h)} />
+                onTouchStart={e => startDrag(e, h)}>
+                <div style={{
+                  width: 14, height: 14,
+                  background: "white",
+                  border: "2px solid var(--raven-glow)",
+                  borderRadius: 3,
+                  pointerEvents: "none",
+                }} />
+              </div>
             ))}
 
             {/* Dimensions badge */}

@@ -6,6 +6,7 @@ import {
   OUTPUT_PRESETS, readFileAsDataURL, loadImage
 } from "../lib/imageProcessing";
 import CropTool from "../components/CropTool";
+import HowToGuide from "../components/HowToGuide";
 import JSZip from "jszip";
 import {
   Upload, Download, Wand2, Crop, Type, Sliders, Zap,
@@ -186,15 +187,36 @@ export default function Optimiser() {
     setActiveTab("crop");
   };
 
-  const applyCrop = (rect) => {
-    setImages(prev => prev.map((img, i) =>
-      i === cropImage.idx ? { ...img, crop: rect } : img
-    ));
-    // Store crop in settings for single-image use
-    set("crop", rect);
-    setCropActive(false);
-    setCropImage(null);
-    toast.success("Crop applied — will be used when processing");
+  const applyCrop = async (rect) => {
+    try {
+      const img = images[cropImage.idx];
+      const el = await loadImage(cropImage.dataURL);
+      const canvas = document.createElement("canvas");
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(el, rect.x, rect.y, rect.width, rect.height, 0, 0, rect.width, rect.height);
+      const croppedPreview = canvas.toDataURL("image/jpeg", 0.85);
+
+      setImages(prev => prev.map((im, i) =>
+        i === cropImage.idx ? { ...im, crop: rect, preview: croppedPreview } : im
+      ));
+      set("crop", rect);
+      setCropActive(false);
+      setCropImage(null);
+      toast.success("Crop applied — you can see the update in the thumbnail");
+    } catch (err) {
+      const errorId = Math.random().toString(36).slice(2, 8).toUpperCase();
+      console.error(`[${errorId}] Crop preview generation failed:`, err);
+      toast.error(`Couldn't generate crop preview (error ${errorId}). Your crop selection was still saved and will apply when you process. If this keeps happening, report error ${errorId}.`);
+      // Still save the crop rect even if the preview render failed
+      setImages(prev => prev.map((im, i) =>
+        i === cropImage.idx ? { ...im, crop: rect } : im
+      ));
+      set("crop", rect);
+      setCropActive(false);
+      setCropImage(null);
+    }
   };
 
   // ── AI Upscale (backend → Replicate) ─────────────────────────────────────
@@ -277,7 +299,10 @@ export default function Optimiser() {
                 }
               );
             } else {
-              toast.error(`AI upscale failed for ${img.name}: ${e.message} — using standard resize`);
+              const msg = e.userMessage || e.message;
+              const idSuffix = e.errorId ? ` (error ${e.errorId})` : "";
+              console.error(`AI upscale failed for ${img.name}:`, e);
+              toast.error(`AI upscale failed for ${img.name}: ${msg}${idSuffix} — using standard resize`);
             }
           }
         }
@@ -318,8 +343,11 @@ export default function Optimiser() {
         }
 
       } catch (err) {
-        toast.error(`Failed: ${img.name} — ${err.message}`);
-        out.push({ error: err.message, originalName: img.name, id: img.id });
+        const msg = err.userMessage || err.message;
+        const idSuffix = err.errorId ? ` (error ${err.errorId})` : "";
+        console.error(`Processing failed for ${img.name}:`, err);
+        toast.error(`Failed: ${img.name} — ${msg}${idSuffix}`);
+        out.push({ error: msg, errorId: err.errorId || null, originalName: img.name, id: img.id });
       }
     }
 
@@ -364,6 +392,8 @@ export default function Optimiser() {
   return (
     <div className="min-h-screen pt-20 pb-16">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+
+        <HowToGuide />
 
         {/* Header */}
         <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">

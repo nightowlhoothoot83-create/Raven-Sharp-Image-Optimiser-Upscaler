@@ -15,16 +15,61 @@ from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any
 
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
 
 # ── Config ──────────────────────────────────────────────────────────────────
-MONGO_URL     = os.environ["MONGO_URL"]
-DB_NAME       = os.environ["DB_NAME"]
-JWT_SECRET    = os.environ["JWT_SECRET"]
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+log = logging.getLogger("ravensharp-imageopt")
+
+# --- Self-healing startup config -------------------------------------------
+# Some vars have a safe auto-fix (app boots in a slightly degraded mode with a
+# loud warning). MONGO_URL has no safe default — if it's missing, we can't
+# invent a working database, so we fail fast with ONE clear diagnostic line
+# instead of a bare KeyError traceback that's hard to read in Railway logs.
+_startup_warnings = []
+
+MONGO_URL = os.environ.get("MONGO_URL")
+if not MONGO_URL:
+    log.critical(
+        "STARTUP FAILURE: MONGO_URL is not set on this deployment. "
+        "The app cannot start without a database connection string. "
+        "Set MONGO_URL in Railway's environment variables for this service and redeploy."
+    )
+    raise RuntimeError("Missing required environment variable: MONGO_URL")
+
+DB_NAME = os.environ.get("DB_NAME")
+if not DB_NAME:
+    DB_NAME = "ravensharp_imageopt"
+    _startup_warnings.append(f"DB_NAME was not set — defaulting to '{DB_NAME}'.")
+
+JWT_SECRET = os.environ.get("JWT_SECRET")
+if not JWT_SECRET:
+    import secrets as _secrets
+    JWT_SECRET = _secrets.token_hex(32)
+    _startup_warnings.append(
+        "JWT_SECRET was not set — auto-generated a temporary one for this boot. "
+        "Existing user sessions will be invalidated on every restart until a permanent "
+        "JWT_SECRET is set in Railway's environment variables."
+    )
+
+for _w in _startup_warnings:
+    log.warning("STARTUP: %s", _w)
+
 REPLICATE_KEY = os.environ.get("REPLICATE_API_KEY", "")
 STRIPE_KEY    = os.environ.get("STRIPE_API_KEY", "")
+RESEND_KEY    = os.environ.get("RESEND_API_KEY", "")
+RESEND_FROM   = os.environ.get("RESEND_FROM_EMAIL", "Raven Sharp <noreply@ravensharptools.com>")
+if not RESEND_KEY:
+    _resend_warning = (
+        "RESEND_API_KEY was not set — password reset emails will NOT be sent to customers. "
+        "Only the owner account will see a usable reset token (for testing). "
+        "Set RESEND_API_KEY in Railway's environment variables to enable real reset emails."
+    )
+    _startup_warnings.append(_resend_warning)
+    log.warning("STARTUP: %s", _resend_warning)
 OWNER_EMAIL   = os.environ.get("OWNER_EMAIL", "ascensiondigitalagency@outlook.com")
 FRONTEND_URL  = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 CORS_ORIGINS  = [
@@ -108,6 +153,30 @@ async def get_user(request: Request):
         return user
     except jwt.ExpiredSignatureError: raise HTTPException(401, "Token expired")
     except Exception: raise HTTPException(401, "Invalid token")
+
+async def send_email(to: str, subject: str, html: str) -> bool:
+    """Send an email via Resend's HTTP API. Returns True if sent, False if
+    RESEND_API_KEY isn't configured or the send failed — callers should treat
+    False as 'log it and degrade gracefully', never as a reason to crash a
+    request (a failed reset email shouldn't break the forgot-password flow
+    for the user, it should just mean they don't get the email)."""
+    if not RESEND_KEY:
+        log.warning("send_email skipped (no RESEND_API_KEY configured): to=%s subject=%r", to, subject)
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {RESEND_KEY}", "Content-Type": "application/json"},
+                json={"from": RESEND_FROM, "to": [to], "subject": subject, "html": html},
+            )
+            if resp.status_code >= 400:
+                log.error("Resend email failed (%s): %s", resp.status_code, resp.text[:500])
+                return False
+            return True
+    except Exception as e:
+        log.error("Resend email exception: %s", e)
+        return False
 
 # ── Models ───────────────────────────────────────────────────────────────────
 class RegisterIn(BaseModel):
@@ -439,7 +508,7 @@ _reset_tokens: dict = {}
 
 @api.post("/auth/forgot-password")
 async def forgot_password(payload: ForgotPasswordIn):
-    """Generate a password reset token. In production, email this to the user."""
+    """Generate a password reset token and email it to the user via Resend."""
     email = payload.email.lower().strip()
     user = await db.users.find_one({"email": email})
     if not user:
@@ -447,11 +516,22 @@ async def forgot_password(payload: ForgotPasswordIn):
         return {"message": "If that email exists, a reset link has been sent."}
     token = str(uuid.uuid4())
     _reset_tokens[token] = {"email": email, "expires": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()}
-    # In production: send email with reset link
-    # For now: return token directly (owner can use it)
+    reset_link = f"{FRONTEND_URL}/reset-password?token={token}"
     log.info(f"Password reset token for {email}: {token}")
+
+    sent = await send_email(
+        to=email,
+        subject="Reset your Raven Sharp Image Optimiser password",
+        html=f"""
+            <p>Someone requested a password reset for your Raven Sharp Image Optimiser account.</p>
+            <p><a href="{reset_link}">Click here to reset your password</a> — this link expires in 1 hour.</p>
+            <p>If you didn't request this, you can safely ignore this email.</p>
+        """,
+    )
     return {
         "message": "If that email exists, a reset link has been sent.",
+        # Fallback for owner testing, or if email sending isn't configured yet —
+        # never shown to anyone but the owner account, for security.
         "debug_token": token if email == OWNER_EMAIL.lower() else None
     }
 
@@ -566,9 +646,53 @@ async def shutdown():
 
 app.include_router(api)
 
+# ── Global error visibility ──────────────────────────────────────────────────
+# Any exception not already handled by a specific try/except becomes a bare
+# 500 by default, with nothing useful in the response and no easy way to match
+# a customer's "it broke" report to the right line in the logs. This catches
+# everything, logs the full traceback under a short error ID, and returns that
+# same ID to the frontend so it can be shown to the customer — if they report
+# "error 7F3K2Q", you can grep Railway logs for that exact ID and see the full
+# trace immediately instead of guessing.
+import traceback as _traceback
+import secrets as _secrets_err
+
+@app.exception_handler(Exception)
+async def _global_exception_handler(request: Request, exc: Exception):
+    error_id = _secrets_err.token_hex(4).upper()
+    log.error(
+        "UNHANDLED ERROR [%s] on %s %s: %s\n%s",
+        error_id, request.method, request.url.path, repr(exc),
+        "".join(_traceback.format_exception(type(exc), exc, exc.__traceback__)),
+    )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": f"Something went wrong ({type(exc).__name__}). "
+                     f"If this keeps happening, report error {error_id} to support.",
+            "error_id": error_id,
+        },
+    )
+
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "raven-sharp-optimiser"}
+    checks = {}
+    overall_ok = True
+    try:
+        await asyncio.wait_for(client.admin.command("ping"), timeout=3.0)
+        checks["mongodb"] = "ok"
+    except Exception as e:
+        checks["mongodb"] = f"unreachable: {type(e).__name__}"
+        overall_ok = False
+    checks["replicate_configured"] = bool(REPLICATE_KEY)
+    checks["stripe_configured"] = bool(STRIPE_KEY)
+    if _startup_warnings:
+        checks["startup_warnings"] = _startup_warnings
+    return JSONResponse(
+        status_code=200 if overall_ok else 503,
+        content={"status": "ok" if overall_ok else "degraded", "service": "raven-sharp-optimiser", "checks": checks},
+    )
+
 
 if __name__ == "__main__":
     import uvicorn
