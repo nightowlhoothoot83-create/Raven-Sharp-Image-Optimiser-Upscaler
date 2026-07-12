@@ -3,7 +3,7 @@ import { useAuth } from "../context/AuthContext";
 import api from "../lib/api";
 import {
   processImage, DEFAULT_SETTINGS, PRESET_SIZES,
-  OUTPUT_PRESETS, readFileAsDataURL, loadImage
+  readFileAsDataURL, loadImage
 } from "../lib/imageProcessing";
 import CropTool from "../components/CropTool";
 import HowToGuide from "../components/HowToGuide";
@@ -11,7 +11,7 @@ import JSZip from "jszip";
 import {
   Upload, Download, Wand2, Crop, Type, Sliders, Zap,
   X, Check, ChevronDown, ChevronUp, RefreshCw, Eye,
-  Layers, Settings, AlertCircle, Star, Image, Scissors,
+  Layers, Settings, AlertCircle, Image, Scissors,
   MoveHorizontal
 } from "lucide-react";
 import { toast } from "sonner";
@@ -390,12 +390,6 @@ export default function Optimiser() {
   const currentImage  = images[previewIdx];
 
   // Apply output preset
-  const applyPreset = (presetId) => {
-    const preset = OUTPUT_PRESETS.find(p => p.id === presetId);
-    if (!preset) return;
-    setSettings(s => ({ ...s, ...preset.settings, outputPreset: presetId }));
-  };
-
   return (
     <div className="min-h-screen pt-20 pb-16">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -541,118 +535,26 @@ export default function Optimiser() {
               </div>
             )}
 
-            {/* Preview / result */}
-            {(images.length > 0 || results.length > 0) && !cropActive && (
+            {/* Preview (pre-processing) — once processing completes, the full
+                before/after comparison appears below everything else at the
+                bottom of the page, not here. */}
+            {images.length > 0 && !cropActive && !(currentResult && !currentResult.error) && (
               <div className="glass rounded-2xl overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-3 border-b border-white/8">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold">
-                      {currentResult && !currentResult.error ? "Result" : "Preview"}
-                    </span>
-                    {currentResult && !currentResult.error && (
-                      <span className="text-xs text-emerald-400">✓ Processed</span>
-                    )}
-                  </div>
-                  {currentResult && !currentResult.error && (
-                    <div className="flex items-center gap-1.5 text-xs text-[var(--muted)]">
-                      <MoveHorizontal className="w-3.5 h-3.5" />
-                      Drag to compare
-                    </div>
-                  )}
+                  <span className="text-sm font-semibold">Preview</span>
                 </div>
                 <div className="relative aspect-video bg-black/40 flex items-center justify-center">
-                  {currentResult && !currentResult.error ? (
-                    <BeforeAfterSlider
-                      beforeSrc={currentImage.preview}
-                      afterSrc={currentResult.outputURL}
-                    />
-                  ) : currentImage ? (
+                  {currentImage ? (
                     <img src={currentImage.preview} alt="preview" className="max-w-full max-h-full object-contain" />
                   ) : null}
-
-                  {/* Stats overlay */}
-                  {currentResult && !currentResult.error && (
-                    <div className="absolute bottom-3 left-3 flex gap-2">
-                      {[
-                        { label: "Size", val: fmtSize(currentResult.outputSize) },
-                        { label: "Dims", val: `${currentResult.width}×${currentResult.height}` },
-                        { label: "DPI",  val: currentResult.dpi },
-                        { label: "Format", val: currentResult.format.toUpperCase() },
-                      ].map(s => (
-                        <span key={s.label} className="text-[10px] font-mono bg-black/70 text-white/80 px-2 py-1 rounded">
-                          {s.label}: {s.val}
-                        </span>
-                      ))}
-                    </div>
-                  )}
                 </div>
-
-                {currentResult && !currentResult.error && (
-                  <div className="p-3 flex items-center gap-3 border-t border-white/8">
-                    <div className="flex-1 text-xs text-[var(--muted)]">
-                      {fmtSize(currentResult.originalURL ? images[previewIdx]?.size || 0 : 0)} →{" "}
-                      <span className="text-emerald-400 font-semibold">{fmtSize(currentResult.outputSize)}</span>
-                      {currentResult.outputSize < (images[previewIdx]?.size || 0) && (
-                        <span className="ml-1 text-[var(--subtle)]">
-                          ({Math.round((1 - currentResult.outputSize/(images[previewIdx]?.size||1))*100)}% smaller)
-                        </span>
-                      )}
-                    </div>
-                    <a href={currentResult.outputURL} download={currentResult.name}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--raven)] hover:bg-[var(--raven-glow)] text-white rounded-lg text-xs font-semibold transition-all">
-                      <Download className="w-3.5 h-3.5" /> Download
-                    </a>
-                  </div>
-                )}
               </div>
             )}
 
-            {/* Run + Download */}
-            {images.length > 0 && (
-              <div className="flex flex-wrap gap-3">
-                <button onClick={run} disabled={processing || aiUpscaling}
-                  className="flex items-center gap-2 px-8 h-12 bg-[var(--raven)] hover:bg-[var(--raven-glow)] text-white rounded-xl font-semibold text-sm transition-all glow-pulse disabled:opacity-50 flex-1 justify-center">
-                  {processing ? (
-                    <><RefreshCw className="w-4 h-4 animate-spin" />
-                      {progress.msg || `Processing ${progress.current}/${progress.total}…`}</>
-                  ) : (
-                    <><Wand2 className="w-4 h-4" />
-                      Process {images.length > 1 ? `${images.length} Images` : "Image"}</>
-                  )}
-                </button>
-
-                {results.filter(r => !r.error).length > 0 && (
-                  <button onClick={downloadAll}
-                    className="flex items-center gap-2 px-5 h-12 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 rounded-xl font-semibold text-sm transition-all">
-                    <Download className="w-4 h-4" />
-                    {results.filter(r=>!r.error).length > 1 ? "Download ZIP" : "Download"}
-                  </button>
-                )}
-              </div>
-            )}
           </div>
 
           {/* ── RIGHT: Settings panel ─────────────────────────────────── */}
           <div className="space-y-4">
-
-            {/* Output preset quick-apply */}
-            <div className="glass rounded-2xl p-5">
-              <h3 className="text-xs font-mono uppercase tracking-widest text-[var(--muted)] mb-3">
-                <Star className="w-3.5 h-3.5 inline mr-1.5" />Quick Presets
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {OUTPUT_PRESETS.map(p => (
-                  <button key={p.id} onClick={() => applyPreset(p.id)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                      settings.outputPreset === p.id
-                        ? "bg-[var(--raven)]/30 text-[var(--raven-glow)] border border-[var(--raven)]/40"
-                        : "bg-white/5 text-[var(--muted)] border border-white/10 hover:bg-white/10"
-                    }`}>
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-            </div>
 
             {/* Remove Background — per-image selection */}
             <div className="glass rounded-2xl p-5 border border-white/10">
@@ -976,8 +878,90 @@ export default function Optimiser() {
               className="w-full py-2.5 text-xs text-[var(--subtle)] hover:text-[var(--muted)] transition-colors">
               Reset all settings to defaults
             </button>
+
+            {/* Run + Download — moved below crop/background-removal/all other
+                settings so on mobile (where columns stack) you set everything
+                up first, then process, instead of Process appearing above
+                options you haven't seen yet. */}
+            {images.length > 0 && (
+              <div className="flex flex-wrap gap-3">
+                <button onClick={run} disabled={processing || aiUpscaling}
+                  className="flex items-center gap-2 px-8 h-12 bg-[var(--raven)] hover:bg-[var(--raven-glow)] text-white rounded-xl font-semibold text-sm transition-all glow-pulse disabled:opacity-50 flex-1 justify-center">
+                  {processing ? (
+                    <><RefreshCw className="w-4 h-4 animate-spin" />
+                      {progress.msg || `Processing ${progress.current}/${progress.total}…`}</>
+                  ) : (
+                    <><Wand2 className="w-4 h-4" />
+                      Process {images.length > 1 ? `${images.length} Images` : "Image"}</>
+                  )}
+                </button>
+
+                {results.filter(r => !r.error).length > 0 && (
+                  <button onClick={downloadAll}
+                    className="flex items-center gap-2 px-5 h-12 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 rounded-xl font-semibold text-sm transition-all">
+                    <Download className="w-4 h-4" />
+                    {results.filter(r=>!r.error).length > 1 ? "Download ZIP" : "Download"}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
+
+        {/* ── Completed result — appears below everything else once
+              processing finishes, instead of sitting above the settings
+              you haven't configured yet. ─────────────────────────────── */}
+        {currentResult && !currentResult.error && (
+          <div className="glass rounded-2xl overflow-hidden mt-6">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/8">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold">Result</span>
+                <span className="text-xs text-emerald-400">✓ Processed</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs text-[var(--muted)]">
+                <MoveHorizontal className="w-3.5 h-3.5" />
+                Drag to compare
+              </div>
+            </div>
+            <div className="relative aspect-video bg-black/40 flex items-center justify-center">
+              <BeforeAfterSlider
+                beforeSrc={currentResult.originalURL || currentImage?.preview}
+                afterSrc={currentResult.outputURL}
+              />
+
+              {/* Stats overlay */}
+              <div className="absolute bottom-3 left-3 flex gap-2">
+                {[
+                  { label: "Size", val: fmtSize(currentResult.outputSize) },
+                  { label: "Dims", val: `${currentResult.width}×${currentResult.height}` },
+                  { label: "DPI",  val: currentResult.dpi },
+                  { label: "Format", val: currentResult.format.toUpperCase() },
+                ].map(s => (
+                  <span key={s.label} className="text-[10px] font-mono bg-black/70 text-white/80 px-2 py-1 rounded">
+                    {s.label}: {s.val}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-3 flex items-center gap-3 border-t border-white/8">
+              <div className="flex-1 text-xs text-[var(--muted)]">
+                {fmtSize(currentResult.originalURL ? images[previewIdx]?.size || 0 : 0)} →{" "}
+                <span className="text-emerald-400 font-semibold">{fmtSize(currentResult.outputSize)}</span>
+                {currentResult.outputSize < (images[previewIdx]?.size || 0) && (
+                  <span className="ml-1 text-[var(--subtle)]">
+                    ({Math.round((1 - currentResult.outputSize/(images[previewIdx]?.size||1))*100)}% smaller)
+                  </span>
+                )}
+              </div>
+              <a href={currentResult.outputURL} download={currentResult.name}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--raven)] hover:bg-[var(--raven-glow)] text-white rounded-lg text-xs font-semibold transition-all">
+                <Download className="w-3.5 h-3.5" /> Download
+              </a>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );
