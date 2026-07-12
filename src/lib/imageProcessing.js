@@ -320,10 +320,15 @@ export async function processImage(fileOrProcessed, settings, onProgress) {
   }
 
   onProgress?.("Loading image…");
-  const dataURL = workingFile instanceof File
-    ? await readFileAsDataURL(workingFile)
+  // Object URL instead of base64: same result for loading into canvas, but
+  // avoids encoding the whole file into a giant in-memory string just to
+  // immediately decode it again. On a batch of several large photos this
+  // was adding up fast enough to crash mobile browser tabs.
+  const objURL = workingFile instanceof File
+    ? URL.createObjectURL(workingFile)
     : workingFile.dataURL;
-  const img = await loadImage(dataURL);
+  const img = await loadImage(objURL);
+  if (workingFile instanceof File) URL.revokeObjectURL(objURL);
 
   // 2. Apply output preset settings
   let s = { ...settings };
@@ -425,7 +430,9 @@ export async function processImage(fileOrProcessed, settings, onProgress) {
     name:         `${name}-optimised.${ext}`,
     blob,
     outputURL:    URL.createObjectURL(blob),
-    originalURL:  dataURL,
+    // originalURL is always overwritten by the caller with the true
+    // pre-processing original — no need to keep a duplicate reference here.
+    originalURL:  null,
     originalSize: workingFile instanceof File ? workingFile.size : (workingFile.originalSize || 0),
     outputSize:   blob.size,
     width: cw, height: ch, dpi: s.dpi, format: s.format,

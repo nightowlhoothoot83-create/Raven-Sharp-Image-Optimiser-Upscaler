@@ -272,7 +272,14 @@ export default function Optimiser() {
         // before/after slider shows a real comparison. Previously "before"
         // was captured after those steps ran, so upscale/bg-removal changes
         // were invisible in the slider.
-        const trueOriginalURL = await readFileAsDataURL(img.file);
+        //
+        // Uses an object URL (a lightweight reference to the file already in
+        // memory) rather than a base64 data URL. Base64-encoding every full
+        // original image and holding all of them in state for the whole
+        // batch was likely why processing several images at once could crash
+        // the tab on mobile — each large photo becomes a multi-MB string
+        // duplicated in memory, and that adds up fast across a batch.
+        const trueOriginalURL = URL.createObjectURL(img.file);
 
         // Apply per-image crop
         if (img.crop) mergedSettings.crop = img.crop;
