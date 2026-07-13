@@ -96,7 +96,7 @@ export const DEFAULT_SETTINGS = {
   height: 0,
   preset: 0,
   lockAspect: true,
-  upscale: true,
+  upscale: false,
   bleed: false,
   // Enhancements
   sharpen: 2,

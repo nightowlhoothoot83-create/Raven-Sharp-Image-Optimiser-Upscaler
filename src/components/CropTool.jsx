@@ -148,7 +148,11 @@ export default function CropTool({ imageURL, originalWidth, originalHeight, onCr
   };
 
   const cb = cropBox;
-  const HANDLES = ["n","ne","e","se","s","sw","w","nw"];
+  // Edges first, corners last — when touch zones overlap on a small crop
+  // box, whichever handle renders last wins the tap. Corners rendering last
+  // means a tap near a corner reliably grabs the corner (standard behavior),
+  // rather than randomly grabbing whichever handle happened to overlap it.
+  const HANDLES = ["n","e","s","w","ne","se","sw","nw"];
   const handlePos = {
     n:  { left: cb ? cb.x + cb.w/2 - 5 : 0, top: cb ? cb.y - 5 : 0 },
     ne: { left: cb ? cb.x + cb.w - 5  : 0, top: cb ? cb.y - 5 : 0 },

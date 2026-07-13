@@ -10,13 +10,14 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
 import os, uuid, json, logging, asyncio
+import base64
 import bcrypt, jwt, httpx
 import io
 from PIL import Image
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any
 
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, BackgroundTasks
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -188,7 +189,134 @@ def _downscale_if_needed(image_bytes: bytes, mime: str, max_pixels: int = 2_000_
         log.warning(f"Downscale-if-needed skipped due to error: {e}")
         return image_bytes
 
-def _replicate_error_detail(res) -> str:
+def _apply_full_processing(img: "Image.Image", settings: dict) -> "Image.Image":
+    """Server-side equivalent of the client-side processImage() pipeline
+    (crop, resize, bleed, brightness/contrast/saturation, sharpen,
+    watermark). Runs after upscale/background-removal, which are handled
+    separately via Replicate. Encoding/DPI/maxKB happen in the caller."""
+    from PIL import ImageEnhance, ImageFilter, ImageDraw, ImageFont, ImageOps
+
+    s = settings
+    if img.mode not in ("RGB", "RGBA"):
+        img = img.convert("RGBA" if "A" in img.mode else "RGB")
+
+    # Crop — settings["crop"] is {x, y, width, height} in original pixels,
+    # same convention as the client-side CropTool output.
+    crop = s.get("crop")
+    if crop:
+        x, y, cw, ch = crop["x"], crop["y"], crop["width"], crop["height"]
+        img = img.crop((int(x), int(y), int(x + cw), int(y + ch)))
+
+    # Resize
+    src_w, src_h = img.size
+    out_w = int(s.get("width") or 0) or src_w
+    out_h = int(s.get("height") or 0) or src_h
+    if s.get("lockAspect") and s.get("width") and not s.get("height"):
+        out_h = round(out_w * src_h / src_w)
+    if s.get("lockAspect") and s.get("height") and not s.get("width"):
+        out_w = round(out_h * src_w / src_h)
+    if not s.get("upscale"):
+        out_w = min(out_w, src_w)
+        out_h = min(out_h, src_h)
+    if (out_w, out_h) != (src_w, src_h):
+        img = img.resize((max(1, out_w), max(1, out_h)), Image.LANCZOS)
+
+    # Bleed — matches client behaviour: white background for JPEG output,
+    # transparent margin otherwise.
+    bleed_px = round((3 / 25.4) * s.get("dpi", 300)) if s.get("bleed") else 0
+    if bleed_px:
+        fill = (255, 255, 255) if s.get("format") == "jpeg" else (0, 0, 0, 0)
+        if s.get("format") == "jpeg" and img.mode != "RGB":
+            img = img.convert("RGB")
+        elif s.get("format") != "jpeg" and img.mode != "RGBA":
+            img = img.convert("RGBA")
+        img = ImageOps.expand(img, border=bleed_px, fill=fill)
+    elif s.get("format") == "jpeg" and img.mode != "RGB":
+        img = img.convert("RGB")
+
+    # Brightness / Contrast / Saturation
+    brightness, contrast, saturation = s.get("brightness", 0), s.get("contrast", 0), s.get("saturation", 0)
+    if brightness:
+        img = ImageEnhance.Brightness(img).enhance(1 + brightness / 150)
+    if contrast:
+        img = ImageEnhance.Contrast(img).enhance(1 + contrast / 100)
+    if saturation:
+        img = ImageEnhance.Color(img).enhance(1 + saturation / 100)
+
+    # Sharpen
+    sharpen = s.get("sharpen", 0)
+    if sharpen:
+        img = img.filter(ImageFilter.UnsharpMask(radius=2, percent=int(sharpen * 40), threshold=3))
+
+    # Watermark
+    wm_text = s.get("watermarkText")
+    if wm_text:
+        if img.mode != "RGBA":
+            img = img.convert("RGBA")
+        overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+        size = int(s.get("watermarkSize", 24))
+        opacity = float(s.get("watermarkOpacity", 0.6))
+        try:
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size)
+        except Exception:
+            font = ImageFont.load_default()
+        w, h = img.size
+        bbox = draw.textbbox((0, 0), wm_text, font=font)
+        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        padding = size * 1.2
+        pos = s.get("watermarkPosition", "bottom-right")
+        positions = {
+            "top-left": (padding, padding),
+            "top-center": ((w - tw) / 2, padding),
+            "top-right": (w - tw - padding, padding),
+            "center": ((w - tw) / 2, (h - th) / 2),
+            "bottom-left": (padding, h - th - padding),
+            "bottom-center": ((w - tw) / 2, h - th - padding),
+        }
+        tx, ty = positions.get(pos, (w - tw - padding, h - th - padding))  # bottom-right default
+        alpha = int(255 * opacity)
+        draw.text((tx, ty), wm_text, font=font, fill=(255, 255, 255, alpha),
+                   stroke_width=1, stroke_fill=(0, 0, 0, int(alpha * 0.5)))
+        img = Image.alpha_composite(img, overlay)
+
+    return img
+
+
+def _encode_and_size(img: "Image.Image", settings: dict) -> tuple:
+    """Encode to the target format/quality/DPI, honouring maxKB by
+    iteratively lowering quality — same approach as the client-side version.
+    Returns (bytes, final_quality_used)."""
+    s = settings
+    fmt_map = {"jpeg": "JPEG", "png": "PNG", "webp": "WEBP"}
+    fmt = fmt_map.get(s.get("format", "jpeg"), "JPEG")
+    dpi = s.get("dpi", 300)
+
+    q = max(0, min(100, s.get("quality", 90)))
+    if s.get("compression") == "smallest": q = min(q, 70)
+    if s.get("compression") == "balanced": q = min(q, 85)
+
+    if fmt == "JPEG" and img.mode != "RGB":
+        img = img.convert("RGB")
+
+    def _save(quality):
+        buf = io.BytesIO()
+        kwargs = {"dpi": (dpi, dpi)}
+        if fmt != "PNG":
+            kwargs["quality"] = quality
+        img.save(buf, format=fmt, **kwargs)
+        return buf.getvalue()
+
+    data = _save(q)
+    max_kb = s.get("maxKB", 0)
+    if max_kb and fmt != "PNG":
+        while len(data) / 1024 > max_kb and q > 40:
+            q -= 5
+            data = _save(q)
+
+    return data, q
+
+
     """Extract a clean, specific error message from a Replicate API error
     response, instead of showing the customer a generic 'service error'
     with no useful detail. Falls back gracefully if the response isn't the
@@ -252,6 +380,18 @@ class RemoveBgIn(BaseModel):
 
 class StripeCheckoutIn(BaseModel):
     tier: str; billing: str = "monthly"
+
+class JobImageIn(BaseModel):
+    name: str
+    image_base64: str
+    mime: str = "image/jpeg"
+    crop: Optional[Dict[str, float]] = None      # {x, y, width, height} in original pixels
+    removeBg: bool = False
+    upscale: bool = False
+
+class JobCreateIn(BaseModel):
+    images: List[JobImageIn]
+    settings: Dict[str, Any] = Field(default_factory=dict)
 
 # ── Auth routes ──────────────────────────────────────────────────────────────
 @api.post("/auth/register")
@@ -529,6 +669,144 @@ async def delete_job(job_id: str, user: dict = Depends(get_user)):
 @api.delete("/jobs")
 async def delete_all_jobs(user: dict = Depends(get_user)):
     await db.jobs.delete_many({"user_id": user["id"]})
+    return {"ok": True}
+
+# ── Batch processing jobs ─────────────────────────────────────────────────────
+# Runs entirely server-side via BackgroundTasks so a batch keeps processing
+# even if the browser tab is closed or the phone locks — the whole point of
+# this being a "leave it running and check back later" feature rather than
+# something that dies the moment you navigate away.
+
+async def _process_one_batch_image(batch_id, idx, total, img: JobImageIn, settings: dict, user: dict):
+    async def set_step(label):
+        await db.batches.update_one(
+            {"id": batch_id},
+            {"$set": {"current_step": f"Image {idx+1} of {total} ({img.name}): {label}"}}
+        )
+    try:
+        image_b64, mime = img.image_base64, img.mime
+
+        if img.removeBg:
+            await set_step("removing background")
+            bg_result = await remove_background_endpoint(RemoveBgIn(image_base64=image_b64, mime=mime), user)
+            image_b64, mime = bg_result["base64"], bg_result["mime"]
+
+        if img.upscale:
+            await set_step("AI upscaling")
+            up_result = await upscale_image(UpscaleIn(image_base64=image_b64, mime=mime, scale=4), user)
+            image_b64, mime = up_result["base64"], up_result["mime"]
+
+        await set_step("processing (crop/resize/enhance)")
+        raw = base64.b64decode(image_b64)
+        pil_img = Image.open(io.BytesIO(raw))
+
+        merged = {**settings, "crop": img.crop, "upscale": settings.get("upscale", False)}
+        pil_img = _apply_full_processing(pil_img, merged)
+
+        await set_step("encoding")
+        out_bytes, used_quality = _encode_and_size(pil_img, merged)
+        out_b64 = base64.b64encode(out_bytes).decode()
+
+        ext = {"jpeg": "jpg", "png": "png", "webp": "webp"}.get(merged.get("format", "jpeg"), "jpg")
+        base_name = img.name.rsplit(".", 1)[0] if "." in img.name else img.name
+
+        return {
+            "id": str(uuid.uuid4()),
+            "name": f"{base_name}-optimised.{ext}",
+            "output_base64": out_b64,
+            "mime": f"image/{merged.get('format','jpeg')}",
+            "output_size": len(out_bytes),
+            "width": pil_img.width,
+            "height": pil_img.height,
+            "status": "done",
+        }
+    except Exception as e:
+        log.error(f"[{batch_id}] Batch image error for {img.name}: {e}")
+        return {"id": str(uuid.uuid4()), "name": img.name, "error": str(e), "status": "failed"}
+
+
+async def _run_batch(batch_id: str, user: dict, images: List[JobImageIn], settings: dict):
+    results = []
+    total = len(images)
+    for idx, img in enumerate(images):
+        result_item = await _process_one_batch_image(batch_id, idx, total, img, settings, user)
+        results.append(result_item)
+        # Save after every image — closing the tab or losing connection never
+        # loses completed work, same pattern as the POD pipeline.
+        await db.batches.update_one(
+            {"id": batch_id},
+            {"$set": {"results": results, "processed_count": len(results)}}
+        )
+    await db.batches.update_one(
+        {"id": batch_id},
+        {"$set": {"status": "completed", "current_step": None,
+                   "completed_at": datetime.now(timezone.utc).isoformat()}}
+    )
+
+@api.post("/batches")
+async def create_batch(payload: JobCreateIn, background_tasks: BackgroundTasks,
+                        user: dict = Depends(get_user)):
+    if not payload.images:
+        raise HTTPException(400, "No images provided")
+    batch_id = str(uuid.uuid4())
+    batch = {
+        "id": batch_id, "user_id": user["id"], "status": "processing",
+        "current_step": "Starting…", "total_count": len(payload.images),
+        "processed_count": 0, "results": [],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.batches.insert_one(batch)
+    background_tasks.add_task(_run_batch, batch_id, user, payload.images, payload.settings)
+    return {"id": batch_id, "status": "processing", "total_count": len(payload.images)}
+
+@api.get("/batches/{batch_id}")
+async def get_batch(batch_id: str, user: dict = Depends(get_user)):
+    batch = await db.batches.find_one(
+        {"id": batch_id, "user_id": user["id"]},
+        {"_id": 0, "results.output_base64": 0}  # thumbnails/downloads fetched separately
+    )
+    if not batch: raise HTTPException(404, "Batch not found")
+    return batch
+
+@api.get("/batches")
+async def list_batches(user: dict = Depends(get_user)):
+    cursor = db.batches.find(
+        {"user_id": user["id"]},
+        {"_id": 0, "results.output_base64": 0}
+    ).sort("created_at", -1).limit(50)
+    return [b async for b in cursor]
+
+@api.get("/batches/{batch_id}/image/{image_id}")
+async def get_batch_image(batch_id: str, image_id: str, user: dict = Depends(get_user)):
+    """Fetch the actual output bytes for one processed image — kept out of
+    the main batch status response so polling stays lightweight."""
+    batch = await db.batches.find_one({"id": batch_id, "user_id": user["id"]})
+    if not batch: raise HTTPException(404, "Batch not found")
+    item = next((r for r in batch.get("results", []) if r.get("id") == image_id), None)
+    if not item or item.get("status") != "done":
+        raise HTTPException(404, "Image not ready")
+    raw = base64.b64decode(item["output_base64"])
+    return Response(content=raw, media_type=item.get("mime", "image/jpeg"),
+                     headers={"Content-Disposition": f'attachment; filename="{item["name"]}"'})
+
+@api.get("/batches/{batch_id}/download-all")
+async def download_batch_zip(batch_id: str, user: dict = Depends(get_user)):
+    batch = await db.batches.find_one({"id": batch_id, "user_id": user["id"]})
+    if not batch: raise HTTPException(404, "Batch not found")
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for item in batch.get("results", []):
+            if item.get("status") == "done" and item.get("output_base64"):
+                zf.writestr(item["name"], base64.b64decode(item["output_base64"]))
+    buf.seek(0)
+    return Response(content=buf.getvalue(), media_type="application/zip",
+                     headers={"Content-Disposition": f'attachment; filename="batch-{batch_id[:8]}.zip"'})
+
+@api.delete("/batches/{batch_id}")
+async def delete_batch(batch_id: str, user: dict = Depends(get_user)):
+    r = await db.batches.delete_one({"id": batch_id, "user_id": user["id"]})
+    if r.deleted_count == 0: raise HTTPException(404, "Batch not found")
     return {"ok": True}
 
 # ── Billing ───────────────────────────────────────────────────────────────────

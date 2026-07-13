@@ -2,12 +2,11 @@ import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import api from "../lib/api";
 import {
-  processImage, DEFAULT_SETTINGS, PRESET_SIZES,
+  DEFAULT_SETTINGS, PRESET_SIZES,
   readFileAsDataURL, loadImage
 } from "../lib/imageProcessing";
 import CropTool from "../components/CropTool";
 import HowToGuide from "../components/HowToGuide";
-import JSZip from "jszip";
 import {
   Upload, Download, Wand2, Crop, Type, Sliders, Zap,
   X, Check, ChevronDown, ChevronUp, RefreshCw, Eye,
@@ -149,9 +148,77 @@ export default function Optimiser() {
   const [previewIdx, setPreviewIdx] = useState(0);
   const [cropActive, setCropActive] = useState(false);
   const [cropImage, setCropImage]   = useState(null); // { dataURL, w, h, idx }
-  const [aiUpscaling, setAiUpscaling] = useState(false);
+  const [batchId, setBatchId]         = useState(null);
+  const [resultPreviewURL, setResultPreviewURL] = useState(null);
+  const pollTimerRef = useRef(null);
 
   const set = (key, val) => setSettings(s => ({ ...s, [key]: val }));
+
+  // ── Resume an in-progress batch after leaving/reloading the page ──────────
+  // The whole point of server-side batches is that they keep running even if
+  // you close the tab — this picks the job back up on return instead of
+  // losing track of it.
+  useEffect(() => {
+    const saved = localStorage.getItem("ravensharp_active_batch");
+    if (saved) {
+      setBatchId(saved);
+      setProcessing(true);
+      pollBatch(saved);
+      toast.info("Resuming your batch that's still processing in the background…");
+    }
+    return () => { if (pollTimerRef.current) clearTimeout(pollTimerRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const pollBatch = async (id) => {
+    try {
+      const { data } = await api.get(`/batches/${id}`);
+      setResults(data.results || []);
+      if (data.status === "completed") {
+        localStorage.removeItem("ravensharp_active_batch");
+        localStorage.setItem("ravensharp_last_completed_batch", id);
+        setProcessing(false);
+        setBatchId(null);
+        setProgress({ current: 0, total: 0, msg: "" });
+        const ok = (data.results || []).filter(r => !r.error && r.status !== "failed").length;
+        toast.success(`${ok} image${ok !== 1 ? "s" : ""} processed`);
+        return;
+      }
+      setProgress({
+        current: data.processed_count || 0,
+        total: data.total_count || images.length,
+        msg: data.current_step || "Processing…",
+      });
+      pollTimerRef.current = setTimeout(() => pollBatch(id), 3000);
+    } catch (err) {
+      console.error("Batch poll failed:", err);
+      // Keep trying — a transient network blip shouldn't abandon tracking a
+      // batch that's still genuinely running server-side.
+      pollTimerRef.current = setTimeout(() => pollBatch(id), 5000);
+    }
+  };
+
+  // Fetch the actual image bytes for whichever result is currently being
+  // previewed, on demand — keeps polling responses lightweight rather than
+  // carrying every image's full data on every poll.
+  useEffect(() => {
+    const r = results[previewIdx];
+    const activeBatchId = batchId || localStorage.getItem("ravensharp_last_completed_batch");
+    if (!r || r.status !== "done" || !activeBatchId) { setResultPreviewURL(null); return; }
+    let cancelled = false;
+    let objUrl = null;
+    (async () => {
+      try {
+        const res = await api.get(`/batches/${activeBatchId}/image/${r.id}`, { responseType: "blob" });
+        if (cancelled) return;
+        objUrl = URL.createObjectURL(res.data);
+        setResultPreviewURL(objUrl);
+      } catch {
+        if (!cancelled) setResultPreviewURL(null);
+      }
+    })();
+    return () => { cancelled = true; if (objUrl) URL.revokeObjectURL(objUrl); };
+  }, [results, previewIdx, batchId]);
 
   // ── File loading ─────────────────────────────────────────────────────────
   const onFiles = useCallback(async (files) => {
@@ -219,35 +286,23 @@ export default function Optimiser() {
     }
   };
 
-  // ── AI Upscale (backend → Replicate) ─────────────────────────────────────
-  const runAiUpscale = async (file) => {
-    if (!user) throw new Error("Sign in to use AI upscaling");
-    setAiUpscaling(true);
-    try {
-      const dataURL = await readFileAsDataURL(file);
-      const b64     = dataURL.split(",")[1];
-      const mime    = file.type || "image/jpeg";
-      const { data } = await api.post("/upscale", {
-        image_base64: b64, mime, scale: 4
-      });
-      // Return processed object compatible with processImage
-      const img = await loadImage(`data:${data.mime};base64,${data.base64}`);
-      return {
-        dataURL: `data:${data.mime};base64,${data.base64}`,
-        width: img.naturalWidth, height: img.naturalHeight,
-        name: file.name.replace(/\.[^.]+$/, ""),
-        originalSize: file.size,
-      };
-    } finally {
-      setAiUpscaling(false);
-    }
-  };
-
   // ── Process ───────────────────────────────────────────────────────────────
+  // Submits the whole batch to the server and returns immediately — actual
+  // processing (crop, resize, enhance, AI upscale, background removal)
+  // happens server-side via a background task, so it keeps running even if
+  // you close this tab or your phone locks. Progress is picked up again by
+  // polling (or by the resume-on-mount effect if you come back later).
   const run = async () => {
     if (images.length === 0) { toast.error("Drop some images first"); return; }
 
-    // Check tier
+    if (!user) {
+      toast.error(
+        "Sign up for a free account to run batches — they process on our servers so you can leave the page.",
+        { action: { label: "Sign up free", onClick: () => { window.location.href = "/register"; } }, duration: 8000 }
+      );
+      return;
+    }
+
     if (tier !== "owner") {
       const used = user?.images_used || 0;
       if (used + images.length > limits.images) {
@@ -258,132 +313,64 @@ export default function Optimiser() {
 
     setProcessing(true);
     setResults([]);
-    const out = [];
+    setProgress({ current: 0, total: images.length, msg: "Uploading…" });
 
-    for (let i = 0; i < images.length; i++) {
-      const img = images[i];
-      try {
-        setProgress({ current: i+1, total: images.length, msg: `Processing ${img.name}…` });
+    try {
+      const imagesPayload = await Promise.all(images.map(async (img) => {
+        const dataURL = await readFileAsDataURL(img.file);
+        const base64 = dataURL.split(",")[1];
+        return {
+          name: img.name,
+          image_base64: base64,
+          mime: img.file.type || "image/jpeg",
+          crop: img.crop || null,
+          removeBg: !!img.removeBg,
+          upscale: !!settings.upscale,
+        };
+      }));
 
-        let source = img.file;
-        let mergedSettings = { ...settings };
-
-        // Capture the TRUE original (before upscale/bg-removal/crop) so the
-        // before/after slider shows a real comparison. Previously "before"
-        // was captured after those steps ran, so upscale/bg-removal changes
-        // were invisible in the slider.
-        //
-        // Uses an object URL (a lightweight reference to the file already in
-        // memory) rather than a base64 data URL. Base64-encoding every full
-        // original image and holding all of them in state for the whole
-        // batch was likely why processing several images at once could crash
-        // the tab on mobile — each large photo becomes a multi-MB string
-        // duplicated in memory, and that adds up fast across a batch.
-        const trueOriginalURL = URL.createObjectURL(img.file);
-
-        // Apply per-image crop
-        if (img.crop) mergedSettings.crop = img.crop;
-
-        // Apply per-image background removal — only remove BG on images
-        // specifically flagged, not globally on everything
-        mergedSettings.removeBg = !!img.removeBg;
-
-        // AI upscale (if enabled and user wants it)
-        if (settings.upscale && REPLICATE_UPSCALE_ENABLED) {
-          setProgress({ current: i+1, total: images.length, msg: `AI upscaling ${img.name}…` });
-          try {
-            source = await runAiUpscale(img.file);
-          } catch (e) {
-            if (!user) {
-              toast.error(
-                "Real AI upscaling needs a free account — sign up to unlock it.",
-                {
-                  action: {
-                    label: "Sign up free",
-                    onClick: () => { window.location.href = "/register"; }
-                  },
-                  duration: 8000,
-                }
-              );
-            } else {
-              const msg = e.userMessage || e.message;
-              const idSuffix = e.errorId ? ` (error ${e.errorId})` : "";
-              console.error(`AI upscale failed for ${img.name}:`, e);
-              toast.error(`AI upscale failed for ${img.name}: ${msg}${idSuffix} — using standard resize`);
-            }
-          }
-        }
-
-        const result = await processImage(
-          source,
-          mergedSettings,
-          msg => setProgress(p => ({ ...p, msg }))
-        );
-        result.originalURL = trueOriginalURL;
-
-        // Free tier: force watermark
-        if (limits.watermark_forced && !mergedSettings.watermarkText) {
-          // Re-process with watermark
-          const watermarkedResult = await processImage(
-            source,
-            { ...mergedSettings, watermarkText: "ravensharp.app", watermarkPosition: "bottom-right", watermarkOpacity: 0.5, watermarkSize: 18 },
-            () => {}
-          );
-          watermarkedResult.originalURL = trueOriginalURL;
-          out.push({ ...watermarkedResult, originalName: img.name, id: img.id });
-        } else {
-          out.push({ ...result, originalName: img.name, id: img.id });
-        }
-
-        // Save job to history
-        if (user) {
-          api.post("/jobs", {
-            name: img.name,
-            original_size: img.file.size,
-            output_size: result.blob.size,
-            width: result.width,
-            height: result.height,
-            dpi: result.dpi,
-            format: result.format,
-            settings: mergedSettings,
-          }).catch(() => {});
-        }
-
-      } catch (err) {
-        const msg = err.userMessage || err.message;
-        const idSuffix = err.errorId ? ` (error ${err.errorId})` : "";
-        console.error(`Processing failed for ${img.name}:`, err);
-        toast.error(`Failed: ${img.name} — ${msg}${idSuffix}`);
-        out.push({ error: msg, errorId: err.errorId || null, originalName: img.name, id: img.id });
+      const jobSettings = { ...settings };
+      // Free tier: force watermark server-side, same as before
+      if (limits.watermark_forced && !jobSettings.watermarkText) {
+        jobSettings.watermarkText = "ravensharp.app";
+        jobSettings.watermarkPosition = "bottom-right";
+        jobSettings.watermarkOpacity = 0.5;
+        jobSettings.watermarkSize = 18;
       }
-    }
 
-    setResults(out);
-    setProcessing(false);
-    setProgress({ current: 0, total: 0, msg: "" });
-    const ok = out.filter(r => !r.error).length;
-    toast.success(`${ok} image${ok !== 1 ? "s" : ""} processed`);
+      const { data } = await api.post("/batches", { images: imagesPayload, settings: jobSettings });
+      localStorage.setItem("ravensharp_active_batch", data.id);
+      setBatchId(data.id);
+      toast.success("Batch started — it'll keep processing even if you leave this page.");
+      pollBatch(data.id);
+    } catch (err) {
+      const msg = err.userMessage || err.message;
+      const idSuffix = err.errorId ? ` (error ${err.errorId})` : "";
+      toast.error(`Couldn't start the batch: ${msg}${idSuffix}`);
+      setProcessing(false);
+    }
   };
 
   // We check if user is logged in and has Replicate key enabled
   const REPLICATE_UPSCALE_ENABLED = settings.upscale && !!user;
 
   const downloadAll = async () => {
-    const ok = results.filter(r => !r.error);
+    const activeBatchId = batchId || localStorage.getItem("ravensharp_last_completed_batch");
+    if (!activeBatchId) return;
+    const ok = results.filter(r => r.status === "done");
     if (ok.length === 1) {
-      const a = document.createElement("a");
-      a.href = ok[0].outputURL;
-      a.download = ok[0].name;
-      a.click();
+      window.location.href = `${api.defaults.baseURL}/batches/${activeBatchId}/image/${ok[0].id}`;
       return;
     }
-    const zip = new JSZip();
-    ok.forEach(r => zip.file(r.name, r.blob));
-    const content = await zip.generateAsync({ type: "blob" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(content);
-    a.download = "raven-sharp-optimised.zip";
-    a.click();
+    try {
+      const res = await api.get(`/batches/${activeBatchId}/download-all`, { responseType: "blob" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(res.data);
+      a.download = "raven-sharp-optimised.zip";
+      a.click();
+    } catch (err) {
+      toast.error(err.userMessage || "Couldn't download the batch — please try again");
+    }
   };
 
   const currentResult = results[previewIdx];
@@ -485,17 +472,37 @@ export default function Optimiser() {
                       onClick={() => setPreviewIdx(i)}
                       className={`relative cursor-pointer rounded-xl overflow-hidden w-20 h-20 transition-all ${previewIdx === i ? "ring-2 ring-[var(--raven-glow)]" : "opacity-70 hover:opacity-100"}`}>
                       <img src={img.preview} alt={img.name} className="w-full h-full object-cover" />
-                      {/* Crop badge */}
+                      {/* Crop badge — tap to undo the crop */}
                       {img.crop && (
-                        <div className="absolute top-1 left-1 w-4 h-4 rounded bg-[var(--raven)] flex items-center justify-center">
+                        <button
+                          onClick={e => {
+                            e.stopPropagation();
+                            setImages(prev => prev.map((im, idx) =>
+                              idx === i
+                                ? { ...im, crop: undefined, preview: URL.createObjectURL(im.file) }
+                                : im
+                            ));
+                            toast.success(`Crop removed from ${img.name}`);
+                          }}
+                          title="Tap to undo crop"
+                          className="absolute top-1 left-1 w-4 h-4 rounded bg-[var(--raven)] hover:bg-red-500 flex items-center justify-center transition-colors">
                           <Crop className="w-2.5 h-2.5 text-white" />
-                        </div>
+                        </button>
                       )}
-                      {/* Remove BG badge */}
+                      {/* Remove BG badge — tap to undo */}
                       {img.removeBg && (
-                        <div className="absolute bottom-1 left-1 rounded bg-purple-500/80 px-1 py-0.5 flex items-center justify-center">
+                        <button
+                          onClick={e => {
+                            e.stopPropagation();
+                            setImages(prev => prev.map((im, idx) =>
+                              idx === i ? { ...im, removeBg: false } : im
+                            ));
+                            toast.success(`Background removal cancelled for ${img.name}`);
+                          }}
+                          title="Tap to undo"
+                          className="absolute bottom-1 left-1 rounded bg-purple-500/80 hover:bg-red-500 px-1 py-0.5 flex items-center justify-center transition-colors">
                           <span className="text-white text-[8px] font-bold leading-none">BG</span>
-                        </div>
+                        </button>
                       )}
                       <button onClick={e => { e.stopPropagation(); removeImage(img.id); }}
                         className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-500/80 text-white flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
@@ -532,22 +539,6 @@ export default function Optimiser() {
                 <a href="/register" className="text-xs font-semibold whitespace-nowrap px-3 py-1.5 rounded-lg bg-[var(--accent)] text-black hover:opacity-90">
                   Sign up free
                 </a>
-              </div>
-            )}
-
-            {/* Preview (pre-processing) — once processing completes, the full
-                before/after comparison appears below everything else at the
-                bottom of the page, not here. */}
-            {images.length > 0 && !cropActive && !(currentResult && !currentResult.error) && (
-              <div className="glass rounded-2xl overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-3 border-b border-white/8">
-                  <span className="text-sm font-semibold">Preview</span>
-                </div>
-                <div className="relative aspect-video bg-black/40 flex items-center justify-center">
-                  {currentImage ? (
-                    <img src={currentImage.preview} alt="preview" className="max-w-full max-h-full object-contain" />
-                  ) : null}
-                </div>
               </div>
             )}
 
@@ -884,34 +875,55 @@ export default function Optimiser() {
                 up first, then process, instead of Process appearing above
                 options you haven't seen yet. */}
             {images.length > 0 && (
-              <div className="flex flex-wrap gap-3">
-                <button onClick={run} disabled={processing || aiUpscaling}
-                  className="flex items-center gap-2 px-8 h-12 bg-[var(--raven)] hover:bg-[var(--raven-glow)] text-white rounded-xl font-semibold text-sm transition-all glow-pulse disabled:opacity-50 flex-1 justify-center">
-                  {processing ? (
-                    <><RefreshCw className="w-4 h-4 animate-spin" />
-                      {progress.msg || `Processing ${progress.current}/${progress.total}…`}</>
-                  ) : (
-                    <><Wand2 className="w-4 h-4" />
-                      Process {images.length > 1 ? `${images.length} Images` : "Image"}</>
-                  )}
-                </button>
-
-                {results.filter(r => !r.error).length > 0 && (
-                  <button onClick={downloadAll}
-                    className="flex items-center gap-2 px-5 h-12 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 rounded-xl font-semibold text-sm transition-all">
-                    <Download className="w-4 h-4" />
-                    {results.filter(r=>!r.error).length > 1 ? "Download ZIP" : "Download"}
+              <div>
+                <div className="flex flex-wrap gap-3">
+                  <button onClick={run} disabled={processing}
+                    className="flex items-center gap-2 px-8 h-12 bg-[var(--raven)] hover:bg-[var(--raven-glow)] text-white rounded-xl font-semibold text-sm transition-all glow-pulse disabled:opacity-50 flex-1 justify-center">
+                    {processing ? (
+                      <><RefreshCw className="w-4 h-4 animate-spin" />
+                        {progress.msg || `Processing ${progress.current}/${progress.total}…`}</>
+                    ) : (
+                      <><Wand2 className="w-4 h-4" />
+                        Process {images.length > 1 ? `${images.length} Images` : "Image"}</>
+                    )}
                   </button>
+
+                  {results.filter(r => r.status === "done").length > 0 && (
+                    <button onClick={downloadAll}
+                      className="flex items-center gap-2 px-5 h-12 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 rounded-xl font-semibold text-sm transition-all">
+                      <Download className="w-4 h-4" />
+                      {results.filter(r=>r.status==="done").length > 1 ? "Download ZIP" : "Download"}
+                    </button>
+                  )}
+                </div>
+                {processing && (
+                  <p className="text-xs text-[var(--muted)] mt-2 text-center">
+                    Running on our servers — safe to leave this page, close the tab, or lock your phone. Come back anytime to check progress.
+                  </p>
                 )}
               </div>
             )}
           </div>
         </div>
 
+        {/* Preview (pre-processing) — lives below Process, same as the
+            completed result below, so the flow is always: settings first,
+            Process button, then whatever's relevant to look at last. */}
+        {images.length > 0 && !cropActive && !(currentResult && currentResult.status === "done") && currentImage && (
+          <div className="glass rounded-2xl overflow-hidden mt-6">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/8">
+              <span className="text-sm font-semibold">Preview</span>
+            </div>
+            <div className="relative aspect-video bg-black/40 flex items-center justify-center">
+              <img src={currentImage.preview} alt="preview" className="max-w-full max-h-full object-contain" />
+            </div>
+          </div>
+        )}
+
         {/* ── Completed result — appears below everything else once
               processing finishes, instead of sitting above the settings
               you haven't configured yet. ─────────────────────────────── */}
-        {currentResult && !currentResult.error && (
+        {currentResult && currentResult.status === "done" && (
           <div className="glass rounded-2xl overflow-hidden mt-6">
             <div className="flex items-center justify-between px-4 py-3 border-b border-white/8">
               <div className="flex items-center gap-2">
@@ -924,18 +936,22 @@ export default function Optimiser() {
               </div>
             </div>
             <div className="relative aspect-video bg-black/40 flex items-center justify-center">
-              <BeforeAfterSlider
-                beforeSrc={currentResult.originalURL || currentImage?.preview}
-                afterSrc={currentResult.outputURL}
-              />
+              {resultPreviewURL ? (
+                <BeforeAfterSlider
+                  beforeSrc={currentImage?.preview}
+                  afterSrc={resultPreviewURL}
+                />
+              ) : (
+                <RefreshCw className="w-6 h-6 animate-spin text-[var(--muted)]" />
+              )}
 
               {/* Stats overlay */}
               <div className="absolute bottom-3 left-3 flex gap-2">
                 {[
-                  { label: "Size", val: fmtSize(currentResult.outputSize) },
+                  { label: "Size", val: fmtSize(currentResult.output_size) },
                   { label: "Dims", val: `${currentResult.width}×${currentResult.height}` },
-                  { label: "DPI",  val: currentResult.dpi },
-                  { label: "Format", val: currentResult.format.toUpperCase() },
+                  { label: "DPI",  val: settings.dpi },
+                  { label: "Format", val: (settings.format || "jpeg").toUpperCase() },
                 ].map(s => (
                   <span key={s.label} className="text-[10px] font-mono bg-black/70 text-white/80 px-2 py-1 rounded">
                     {s.label}: {s.val}
@@ -946,15 +962,15 @@ export default function Optimiser() {
 
             <div className="p-3 flex items-center gap-3 border-t border-white/8">
               <div className="flex-1 text-xs text-[var(--muted)]">
-                {fmtSize(currentResult.originalURL ? images[previewIdx]?.size || 0 : 0)} →{" "}
-                <span className="text-emerald-400 font-semibold">{fmtSize(currentResult.outputSize)}</span>
-                {currentResult.outputSize < (images[previewIdx]?.size || 0) && (
+                {fmtSize(images[previewIdx]?.size || 0)} →{" "}
+                <span className="text-emerald-400 font-semibold">{fmtSize(currentResult.output_size)}</span>
+                {currentResult.output_size < (images[previewIdx]?.size || 0) && (
                   <span className="ml-1 text-[var(--subtle)]">
-                    ({Math.round((1 - currentResult.outputSize/(images[previewIdx]?.size||1))*100)}% smaller)
+                    ({Math.round((1 - currentResult.output_size/(images[previewIdx]?.size||1))*100)}% smaller)
                   </span>
                 )}
               </div>
-              <a href={currentResult.outputURL} download={currentResult.name}
+              <a href={resultPreviewURL} download={currentResult.name}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--raven)] hover:bg-[var(--raven-glow)] text-white rounded-lg text-xs font-semibold transition-all">
                 <Download className="w-3.5 h-3.5" /> Download
               </a>
