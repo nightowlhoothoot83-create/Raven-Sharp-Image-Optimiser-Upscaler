@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from "react";
-import { Crop, Check, X, RotateCcw } from "lucide-react";
+import { Check, X, RotateCcw } from "lucide-react";
 import { CROP_RATIOS } from "../lib/imageProcessing";
 
 /**
@@ -45,8 +45,6 @@ export default function CropTool({ imageURL, originalWidth, originalHeight, onCr
   const offsetX = (containerSize.w - dispW) / 2;
   const offsetY = (containerSize.h - dispH) / 2;
 
-  const toDisplayX = x  => x  * scale + offsetX;
-  const toDisplayY = y  => y  * scale + offsetY;
   const toOrigX    = dx => (dx - offsetX) / scale;
   const toOrigY    = dy => (dy - offsetY) / scale;
 
@@ -55,7 +53,7 @@ export default function CropTool({ imageURL, originalWidth, originalHeight, onCr
     if (dispW && dispH && !cropBox) {
       setCropBox({ x: offsetX, y: offsetY, w: dispW, h: dispH });
     }
-  }, [dispW, dispH, offsetX, offsetY]);
+  }, [dispW, dispH, offsetX, offsetY, cropBox]);
 
   const startDrag = useCallback((e, handle) => {
     if (e.cancelable) e.preventDefault();
@@ -93,7 +91,7 @@ export default function CropTool({ imageURL, originalWidth, originalHeight, onCr
       }
     }
     setCropBox({ x, y, w, h });
-  }, [drag, offsetX, offsetY, dispW, dispH, selectedRatio]);
+  }, [drag, offsetX, offsetY, dispW, dispH, selectedRatio, cropBox]);
 
   const endDrag = useCallback(() => setDrag(null), []);
 

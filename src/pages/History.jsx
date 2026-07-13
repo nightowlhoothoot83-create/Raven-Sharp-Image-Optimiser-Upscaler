@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
 import api from "../lib/api";
 import ADGFooter from "../components/ADGFooter";
 import { Clock, Trash2, Image } from "lucide-react";

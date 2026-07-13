@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { Activity, Wand2, Clock, Settings, LogOut, ChevronDown, Menu, X } from "lucide-react";
+import { Activity, Wand2, Clock, Settings, LogOut, ChevronDown } from "lucide-react";
 
 export default function TopNav() {
   const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [scrolled, setScrolled] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [userMenu, setUserMenu] = useState(false);
 
   useEffect(() => {

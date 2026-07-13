@@ -9,8 +9,8 @@ import CropTool from "../components/CropTool";
 import HowToGuide from "../components/HowToGuide";
 import {
   Upload, Download, Wand2, Crop, Type, Sliders, Zap,
-  X, Check, ChevronDown, ChevronUp, RefreshCw, Eye,
-  Layers, Settings, AlertCircle, Image, Scissors,
+  X, Check, RefreshCw,
+  Layers, Settings, AlertCircle, Scissors,
   MoveHorizontal
 } from "lucide-react";
 import { toast } from "sonner";
@@ -256,7 +256,6 @@ export default function Optimiser() {
 
   const applyCrop = async (rect) => {
     try {
-      const img = images[cropImage.idx];
       const el = await loadImage(cropImage.dataURL);
       const canvas = document.createElement("canvas");
       canvas.width = rect.width;
@@ -350,9 +349,6 @@ export default function Optimiser() {
       setProcessing(false);
     }
   };
-
-  // We check if user is logged in and has Replicate key enabled
-  const REPLICATE_UPSCALE_ENABLED = settings.upscale && !!user;
 
   const downloadAll = async () => {
     const activeBatchId = batchId || localStorage.getItem("ravensharp_last_completed_batch");
