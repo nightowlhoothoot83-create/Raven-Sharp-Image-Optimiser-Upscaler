@@ -355,54 +355,64 @@ async def upscale_image(payload: UpscaleIn, user: dict = Depends(get_user)):
             log.error(f"Replicate file upload - no URL in response: {upload_res.text}")
             raise HTTPException(500, "Upscaling service error - please try again")
 
-        # Submit to Replicate Real-ESRGAN
-        res = await c.post(
-            "https://api.replicate.com/v1/predictions",
-            headers={"Authorization": f"Token {REPLICATE_KEY}",
-                     "Content-Type": "application/json"},
-            json={
-                "version": "42fed1c4974146d4d2414e2be2c5277c7fcf05fcc3a73abf41610695738c1d7b",
-                "input": {
-                    "image": image_url,
-                    "scale": scale,
-                    "face_enhance": False,
+        # Submit to Replicate Real-ESRGAN, with retries specifically for
+        # transient "CUDA out of memory" errors — these happen when
+        # Replicate's shared GPU is briefly overloaded by other jobs, not
+        # because of anything wrong with this image. A short wait and retry
+        # very often succeeds once the GPU frees up.
+        max_attempts = 3
+        last_error = None
+        for attempt_num in range(max_attempts):
+            res = await c.post(
+                "https://api.replicate.com/v1/predictions",
+                headers={"Authorization": f"Token {REPLICATE_KEY}",
+                         "Content-Type": "application/json"},
+                json={
+                    "version": "42fed1c4974146d4d2414e2be2c5277c7fcf05fcc3a73abf41610695738c1d7b",
+                    "input": {
+                        "image": image_url,
+                        "scale": scale,
+                        "face_enhance": False,
+                    }
                 }
-            }
-        )
-        if res.status_code != 201:
-            log.error(f"Replicate submit error: {res.text}")
-            raise HTTPException(500, f"Upscaling failed: {_replicate_error_detail(res)}")
-
-        prediction_id = res.json()["id"]
-
-        # Poll until done
-        for attempt in range(60):
-            await asyncio.sleep(5)
-            poll = await c.get(
-                f"https://api.replicate.com/v1/predictions/{prediction_id}",
-                headers={"Authorization": f"Token {REPLICATE_KEY}"}
             )
-            data = poll.json()
-            status = data.get("status")
+            if res.status_code != 201:
+                log.error(f"Replicate submit error: {res.text}")
+                raise HTTPException(500, f"Upscaling failed: {_replicate_error_detail(res)}")
 
-            if status == "succeeded":
-                output_url = data["output"]
-                # Download and return as base64
-                img_res = await c.get(output_url)
-                import base64
-                b64 = base64.b64encode(img_res.content).decode()
-                mime_out = "image/png"
+            prediction_id = res.json()["id"]
 
-                # Track usage
-                await db.users.update_one({"id": user["id"]}, {"$inc": {"images_used": 1}})
+            # Poll until done
+            result = None
+            for poll_attempt in range(60):
+                await asyncio.sleep(5)
+                poll = await c.get(
+                    f"https://api.replicate.com/v1/predictions/{prediction_id}",
+                    headers={"Authorization": f"Token {REPLICATE_KEY}"}
+                )
+                data = poll.json()
+                status = data.get("status")
 
-                return {"base64": b64, "mime": mime_out,
-                        "scale": scale, "status": "success"}
+                if status == "succeeded":
+                    output_url = data["output"]
+                    img_res = await c.get(output_url)
+                    import base64
+                    b64 = base64.b64encode(img_res.content).decode()
+                    await db.users.update_one({"id": user["id"]}, {"$inc": {"images_used": 1}})
+                    return {"base64": b64, "mime": "image/png", "scale": scale, "status": "success"}
 
-            elif status == "failed":
-                raise HTTPException(500, f"Upscaling failed: {data.get('error', 'Unknown error')}")
-
-    raise HTTPException(504, "Upscaling timed out — image may be too large")
+                elif status == "failed":
+                    error_msg = data.get("error", "Unknown error")
+                    is_transient_gpu_error = "out of memory" in str(error_msg).lower()
+                    if is_transient_gpu_error and attempt_num < max_attempts - 1:
+                        log.warning(f"Transient GPU memory error on attempt {attempt_num+1}/{max_attempts}, retrying: {error_msg}")
+                        last_error = error_msg
+                        await asyncio.sleep(8)  # give the shared GPU a moment to free up
+                        break  # break polling loop, outer loop retries submission
+                    raise HTTPException(500, f"Upscaling failed: {error_msg}")
+            else:
+                raise HTTPException(504, "Upscaling timed out — image may be too large")
+        raise HTTPException(500, f"Upscaling failed after {max_attempts} attempts (GPU repeatedly out of memory): {last_error}")
 
 # ── Background Removal via Replicate ─────────────────────────────────────────
 @api.post("/remove-background")
@@ -446,41 +456,55 @@ async def remove_background_endpoint(payload: RemoveBgIn, user: dict = Depends(g
 
         # Uses Replicate's model-latest-version endpoint so we don't need to
         # hardcode a version hash that can go stale.
-        res = await c.post(
-            "https://api.replicate.com/v1/models/851-labs/background-remover/predictions",
-            headers={"Authorization": f"Token {REPLICATE_KEY}",
-                     "Content-Type": "application/json"},
-            json={"input": {"image": image_url}}
-        )
-        if res.status_code != 201:
-            log.error(f"Replicate bg-remove submit error: {res.text}")
-            raise HTTPException(500, f"Background removal failed: {_replicate_error_detail(res)}")
-
-        prediction_id = res.json()["id"]
-
-        for attempt in range(60):
-            await asyncio.sleep(3)
-            poll = await c.get(
-                f"https://api.replicate.com/v1/predictions/{prediction_id}",
-                headers={"Authorization": f"Token {REPLICATE_KEY}"}
+        #
+        # Retries specifically for transient "CUDA out of memory" errors —
+        # these happen when Replicate's shared GPU is briefly overloaded by
+        # other jobs, not because of anything wrong with this image. A short
+        # wait and retry very often succeeds once the GPU frees up.
+        max_attempts = 3
+        last_error = None
+        for attempt_num in range(max_attempts):
+            res = await c.post(
+                "https://api.replicate.com/v1/models/851-labs/background-remover/predictions",
+                headers={"Authorization": f"Token {REPLICATE_KEY}",
+                         "Content-Type": "application/json"},
+                json={"input": {"image": image_url}}
             )
-            data = poll.json()
-            status = data.get("status")
+            if res.status_code != 201:
+                log.error(f"Replicate bg-remove submit error: {res.text}")
+                raise HTTPException(500, f"Background removal failed: {_replicate_error_detail(res)}")
 
-            if status == "succeeded":
-                output_url = data["output"]
-                img_res = await c.get(output_url)
-                b64 = _b64mod.b64encode(img_res.content).decode()
+            prediction_id = res.json()["id"]
 
-                if tier != "owner":
-                    await db.users.update_one({"id": user["id"]}, {"$inc": {"images_used": 1}})
+            for poll_attempt in range(60):
+                await asyncio.sleep(3)
+                poll = await c.get(
+                    f"https://api.replicate.com/v1/predictions/{prediction_id}",
+                    headers={"Authorization": f"Token {REPLICATE_KEY}"}
+                )
+                data = poll.json()
+                status = data.get("status")
 
-                return {"base64": b64, "mime": "image/png", "status": "success"}
+                if status == "succeeded":
+                    output_url = data["output"]
+                    img_res = await c.get(output_url)
+                    b64 = _b64mod.b64encode(img_res.content).decode()
+                    if tier != "owner":
+                        await db.users.update_one({"id": user["id"]}, {"$inc": {"images_used": 1}})
+                    return {"base64": b64, "mime": "image/png", "status": "success"}
 
-            elif status == "failed":
-                raise HTTPException(500, f"Background removal failed: {data.get('error', 'Unknown error')}")
-
-    raise HTTPException(504, "Background removal timed out")
+                elif status == "failed":
+                    error_msg = data.get("error", "Unknown error")
+                    is_transient_gpu_error = "out of memory" in str(error_msg).lower()
+                    if is_transient_gpu_error and attempt_num < max_attempts - 1:
+                        log.warning(f"Transient GPU memory error on attempt {attempt_num+1}/{max_attempts}, retrying: {error_msg}")
+                        last_error = error_msg
+                        await asyncio.sleep(8)
+                        break
+                    raise HTTPException(500, f"Background removal failed: {error_msg}")
+            else:
+                raise HTTPException(504, "Background removal timed out")
+        raise HTTPException(500, f"Background removal failed after {max_attempts} attempts (GPU repeatedly out of memory): {last_error}")
 
 # ── Job history ───────────────────────────────────────────────────────────────
 @api.post("/jobs")
