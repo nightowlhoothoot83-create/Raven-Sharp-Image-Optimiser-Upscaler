@@ -514,22 +514,6 @@ export default function Optimiser() {
               </div>
             )}
 
-            {/* Crop tool (inline when active) */}
-            {cropActive && cropImage && (
-              <div className="glass rounded-2xl p-5 border border-[var(--raven)]/20">
-                <h3 className="font-display text-lg font-bold mb-4 flex items-center gap-2">
-                  <Crop className="w-5 h-5 text-[var(--raven-glow)]" /> Crop Image
-                </h3>
-                <CropTool
-                  imageURL={cropImage.dataURL}
-                  originalWidth={cropImage.w}
-                  originalHeight={cropImage.h}
-                  onCrop={applyCrop}
-                  onCancel={() => { setCropActive(false); setCropImage(null); }}
-                />
-              </div>
-            )}
-
             {/* Anonymous signup nudge — shown once after first successful result */}
             {!user && results.length > 0 && results.some(r => !r.error) && (
               <div className="glass rounded-2xl px-4 py-3 mt-3 flex items-center justify-between gap-3 border border-[var(--accent)]/30">
@@ -764,6 +748,24 @@ export default function Optimiser() {
                         ✓ Crop applied to {images.filter(i=>i.crop).length} image{images.filter(i=>i.crop).length!==1?"s":""}
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* Crop tab, active — the actual crop tool now appears right
+                    here where you opened it, instead of somewhere else on
+                    the page entirely. */}
+                {activeTab === "crop" && cropActive && cropImage && (
+                  <div>
+                    <h3 className="font-display text-base font-bold mb-4 flex items-center gap-2">
+                      <Crop className="w-5 h-5 text-[var(--raven-glow)]" /> Crop Image
+                    </h3>
+                    <CropTool
+                      imageURL={cropImage.dataURL}
+                      originalWidth={cropImage.w}
+                      originalHeight={cropImage.h}
+                      onCrop={applyCrop}
+                      onCancel={() => { setCropActive(false); setCropImage(null); }}
+                    />
                   </div>
                 )}
 

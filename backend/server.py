@@ -500,7 +500,7 @@ async def upscale_image(payload: UpscaleIn, user: dict = Depends(get_user)):
         # Replicate's shared GPU is briefly overloaded by other jobs, not
         # because of anything wrong with this image. A short wait and retry
         # very often succeeds once the GPU frees up.
-        max_attempts = 3
+        max_attempts = 2
         last_error = None
         for attempt_num in range(max_attempts):
             res = await c.post(
@@ -524,7 +524,7 @@ async def upscale_image(payload: UpscaleIn, user: dict = Depends(get_user)):
 
             # Poll until done
             result = None
-            for poll_attempt in range(60):
+            for poll_attempt in range(24):
                 await asyncio.sleep(5)
                 poll = await c.get(
                     f"https://api.replicate.com/v1/predictions/{prediction_id}",
@@ -601,7 +601,7 @@ async def remove_background_endpoint(payload: RemoveBgIn, user: dict = Depends(g
         # these happen when Replicate's shared GPU is briefly overloaded by
         # other jobs, not because of anything wrong with this image. A short
         # wait and retry very often succeeds once the GPU frees up.
-        max_attempts = 3
+        max_attempts = 2
         last_error = None
         for attempt_num in range(max_attempts):
             res = await c.post(
@@ -616,7 +616,7 @@ async def remove_background_endpoint(payload: RemoveBgIn, user: dict = Depends(g
 
             prediction_id = res.json()["id"]
 
-            for poll_attempt in range(60):
+            for poll_attempt in range(24):
                 await asyncio.sleep(3)
                 poll = await c.get(
                     f"https://api.replicate.com/v1/predictions/{prediction_id}",
