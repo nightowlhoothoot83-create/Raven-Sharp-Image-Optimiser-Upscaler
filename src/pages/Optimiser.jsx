@@ -30,7 +30,7 @@ const WATERMARK_POSITIONS = [
 ];
 
 const TIER_LIMITS = {
-  free: { images: 5, batch: 1, upscale: true, watermark_forced: true },
+  free: { images: 5, batch: 3, upscale: true, watermark_forced: true },
   standard: { images: 100, batch: 10, upscale: true, watermark_forced: false },
   pro: { images: 3000, batch: 50, upscale: true, watermark_forced: false },
   owner: { images: 99999, batch: 99999, upscale: true, watermark_forced: false },
