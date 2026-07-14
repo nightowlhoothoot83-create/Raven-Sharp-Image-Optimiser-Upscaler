@@ -153,6 +153,13 @@ async def get_user(request: Request):
         payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
         user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0})
         if not user: raise HTTPException(401, "User not found")
+        # Self-heal: see login() for why this matters — an owner account
+        # can end up permanently stuck on free-tier limits if it was
+        # created before OWNER_EMAIL was configured correctly.
+        if user.get("email", "").lower() == OWNER_EMAIL.lower() and user.get("tier") != "owner":
+            log.warning(f"Self-healing: {user.get('email')} matches OWNER_EMAIL but had tier={user.get('tier')!r} — upgrading to owner")
+            await db.users.update_one({"id": user["id"]}, {"$set": {"tier": "owner"}})
+            user["tier"] = "owner"
         return user
     except jwt.ExpiredSignatureError: raise HTTPException(401, "Token expired")
     except Exception: raise HTTPException(401, "Invalid token")
@@ -418,6 +425,17 @@ async def login(payload: LoginIn, response: Response):
     user = await db.users.find_one({"email": email})
     if not user or not verify_pw(payload.password, user["password_hash"]):
         raise HTTPException(401, "Invalid email or password")
+
+    # Self-heal: tier is normally only set at registration time. If this
+    # account's email matches OWNER_EMAIL but somehow isn't tagged "owner"
+    # (e.g. it was created before OWNER_EMAIL was configured correctly on
+    # Railway), fix it here rather than leaving the owner permanently stuck
+    # on free-tier limits.
+    if email == OWNER_EMAIL.lower() and user.get("tier") != "owner":
+        log.warning(f"Self-healing: {email} matches OWNER_EMAIL but had tier={user.get('tier')!r} — upgrading to owner")
+        await db.users.update_one({"id": user["id"]}, {"$set": {"tier": "owner"}})
+        user["tier"] = "owner"
+
     access = make_access(user["id"], email)
     refresh = make_refresh(user["id"])
     set_cookies(response, access, refresh)

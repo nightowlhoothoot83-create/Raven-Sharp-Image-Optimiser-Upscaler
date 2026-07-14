@@ -180,8 +180,23 @@ export default function Optimiser() {
         setProcessing(false);
         setBatchId(null);
         setProgress({ current: 0, total: 0, msg: "" });
-        const ok = (data.results || []).filter(r => !r.error && r.status !== "failed").length;
-        toast.success(`${ok} image${ok !== 1 ? "s" : ""} processed`);
+        const resultsArr = data.results || [];
+        const ok = resultsArr.filter(r => !r.error && r.status !== "failed").length;
+        const failed = resultsArr.filter(r => r.error || r.status === "failed");
+        if (failed.length > 0) {
+          // Surface the actual reason instead of a silent "0 processed" —
+          // this is what was missing before: the backend always captured
+          // the real error per-image, it just never reached the UI.
+          const firstError = failed[0].error || "Unknown error";
+          toast.error(
+            ok > 0
+              ? `${ok} image${ok !== 1 ? "s" : ""} processed, ${failed.length} failed: ${firstError}`
+              : `All ${failed.length} image${failed.length !== 1 ? "s" : ""} failed: ${firstError}`,
+            { duration: 10000 }
+          );
+        } else {
+          toast.success(`${ok} image${ok !== 1 ? "s" : ""} processed`);
+        }
         return;
       }
       setProgress({
