@@ -146,6 +146,10 @@ export default function Optimiser() {
   const [results, setResults]       = useState([]);
   const [progress, setProgress]     = useState({ current: 0, total: 0, msg: "" });
   const [previewIdx, setPreviewIdx] = useState(0);
+  const [viewMode, setViewMode] = useState("grid"); // "grid" | "single"
+  const [gridPage, setGridPage] = useState(0);
+  const [gridPreviewURLs, setGridPreviewURLs] = useState({}); // { [resultId]: blobURL }
+  const GRID_PAGE_SIZE = 10;
   const [cropActive, setCropActive] = useState(false);
   const [cropImage, setCropImage]   = useState(null); // { dataURL, w, h, idx }
   const [batchId, setBatchId]         = useState(null);
@@ -234,6 +238,44 @@ export default function Optimiser() {
     })();
     return () => { cancelled = true; if (objUrl) URL.revokeObjectURL(objUrl); };
   }, [results, previewIdx, batchId]);
+
+  // ── Grid view: fetch preview blobs for up to 10 results at a time ─────────
+  useEffect(() => {
+    if (viewMode !== "grid") return;
+    const activeBatchId = batchId || localStorage.getItem("ravensharp_last_completed_batch");
+    if (!activeBatchId) return;
+    const pageResults = results
+      .slice(gridPage * GRID_PAGE_SIZE, gridPage * GRID_PAGE_SIZE + GRID_PAGE_SIZE)
+      .filter(r => r.status === "done" && !gridPreviewURLs[r.id]);
+    if (pageResults.length === 0) return;
+
+    let cancelled = false;
+    const urls = [];
+    (async () => {
+      const entries = await Promise.all(pageResults.map(async (r) => {
+        try {
+          const res = await api.get(`/batches/${activeBatchId}/image/${r.id}`, { responseType: "blob" });
+          const url = URL.createObjectURL(res.data);
+          urls.push(url);
+          return [r.id, url];
+        } catch {
+          return [r.id, null];
+        }
+      }));
+      if (cancelled) { urls.forEach(u => URL.revokeObjectURL(u)); return; }
+      setGridPreviewURLs(prev => ({ ...prev, ...Object.fromEntries(entries) }));
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, results, gridPage, batchId]);
+
+  // Reset grid pagination and cached blobs whenever a new batch's results come in
+  useEffect(() => {
+    setGridPage(0);
+    Object.values(gridPreviewURLs).forEach(u => u && URL.revokeObjectURL(u));
+    setGridPreviewURLs({});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batchId]);
 
   // ── File loading ─────────────────────────────────────────────────────────
   const onFiles = useCallback(async (files) => {
@@ -936,7 +978,72 @@ export default function Optimiser() {
         {/* ── Completed result — appears below everything else once
               processing finishes, instead of sitting above the settings
               you haven't configured yet. ─────────────────────────────── */}
-        {currentResult && currentResult.status === "done" && (
+        {results.some(r => r.status === "done") && (
+          <div className="flex items-center justify-between mt-6 mb-2">
+            <div className="flex items-center gap-1 p-1 rounded-lg bg-white/5 border border-white/8">
+              <button onClick={() => setViewMode("grid")}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${viewMode === "grid" ? "bg-[var(--raven)] text-white" : "text-[var(--muted)] hover:text-[var(--text)]"}`}>
+                Grid
+              </button>
+              <button onClick={() => setViewMode("single")}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${viewMode === "single" ? "bg-[var(--raven)] text-white" : "text-[var(--muted)] hover:text-[var(--text)]"}`}>
+                Single
+              </button>
+            </div>
+            {viewMode === "grid" && results.filter(r => r.status === "done").length > GRID_PAGE_SIZE && (
+              <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
+                <button onClick={() => setGridPage(p => Math.max(0, p - 1))} disabled={gridPage === 0}
+                  className="px-2 py-1 rounded bg-white/5 disabled:opacity-30 hover:bg-white/10">‹ Prev</button>
+                <span>
+                  {gridPage * GRID_PAGE_SIZE + 1}–{Math.min((gridPage + 1) * GRID_PAGE_SIZE, results.length)} of {results.length}
+                </span>
+                <button onClick={() => setGridPage(p => (p + 1) * GRID_PAGE_SIZE < results.length ? p + 1 : p)}
+                  disabled={(gridPage + 1) * GRID_PAGE_SIZE >= results.length}
+                  className="px-2 py-1 rounded bg-white/5 disabled:opacity-30 hover:bg-white/10">Next ›</button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {viewMode === "grid" && results.some(r => r.status === "done") && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {results
+              .slice(gridPage * GRID_PAGE_SIZE, gridPage * GRID_PAGE_SIZE + GRID_PAGE_SIZE)
+              .map((r, i) => {
+                const globalIdx = gridPage * GRID_PAGE_SIZE + i;
+                const origImage = images[globalIdx];
+                if (r.status !== "done") return null;
+                return (
+                  <div key={r.id || globalIdx} className="glass rounded-xl overflow-hidden">
+                    <div className="flex items-center justify-between px-3 py-2 border-b border-white/8">
+                      <span className="text-xs font-semibold truncate">{r.name || origImage?.name}</span>
+                      <span className="text-[10px] text-emerald-400 shrink-0 ml-2">✓</span>
+                    </div>
+                    <div className="relative aspect-square bg-black/40 flex items-center justify-center">
+                      {gridPreviewURLs[r.id] ? (
+                        <BeforeAfterSlider beforeSrc={origImage?.preview} afterSrc={gridPreviewURLs[r.id]} />
+                      ) : (
+                        <RefreshCw className="w-5 h-5 animate-spin text-[var(--muted)]" />
+                      )}
+                    </div>
+                    <div className="p-2.5 flex items-center gap-2 border-t border-white/8">
+                      <div className="flex-1 text-[10px] text-[var(--muted)]">
+                        {fmtSize(origImage?.size || 0)} → <span className="text-emerald-400 font-semibold">{fmtSize(r.output_size)}</span>
+                      </div>
+                      {gridPreviewURLs[r.id] && (
+                        <a href={gridPreviewURLs[r.id]} download={r.name}
+                          className="flex items-center gap-1 px-2.5 py-1.5 bg-[var(--raven)] hover:bg-[var(--raven-glow)] text-white rounded-md text-[10px] font-semibold transition-all">
+                          <Download className="w-3 h-3" /> Save
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        )}
+
+        {viewMode === "single" && currentResult && currentResult.status === "done" && (
           <div className="glass rounded-2xl overflow-hidden mt-6">
             <div className="flex items-center justify-between px-4 py-3 border-b border-white/8">
               <div className="flex items-center gap-2">
