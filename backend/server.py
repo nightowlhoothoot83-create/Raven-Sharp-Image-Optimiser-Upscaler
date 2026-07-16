@@ -61,7 +61,9 @@ if not JWT_SECRET:
 for _w in _startup_warnings:
     log.warning("STARTUP: %s", _w)
 
-REPLICATE_KEY = os.environ.get("REPLICATE_API_KEY", "")
+RUNWARE_API_KEY = os.environ.get("RUNWARE_API_KEY", "")
+RUNWARE_UPSCALE_MODEL = os.environ.get("RUNWARE_UPSCALE_MODEL", "runware:502@1")  # verify against your dashboard
+RUNWARE_BGREMOVE_MODEL = os.environ.get("RUNWARE_BGREMOVE_MODEL", "runware:110@1")  # verify against your dashboard
 STRIPE_KEY    = os.environ.get("STRIPE_API_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
 if STRIPE_KEY and not STRIPE_WEBHOOK_SECRET:
@@ -479,196 +481,112 @@ async def refresh_token(request: Request, response: Response):
 @api.post("/upscale")
 async def upscale_image(payload: UpscaleIn, user: dict = Depends(get_user)):
     """
-    True AI upscaling — Replicate Real-ESRGAN.
+    True AI upscaling — via Runware (replaced Replicate/Real-ESRGAN).
     Genuine pixel reconstruction from a learned model, NOT canvas bicubic resize.
-    Cost: ~$0.003/image. Scale: 2x or 4x.
     """
     tier = user.get("tier", "free")
     tier_cfg = TIERS.get(tier, TIERS["free"])
 
-    # Check monthly limit
     if tier != "owner":
         images_used = user.get("images_used", 0)
         limit = tier_cfg["images_per_month"]
         if images_used >= limit:
             raise HTTPException(403, f"Monthly image limit reached ({limit}). Upgrade your plan.")
 
-    if not REPLICATE_KEY:
-        raise HTTPException(500, "Replicate API key not configured")
+    if not RUNWARE_API_KEY:
+        raise HTTPException(500, "Runware API key not configured")
 
     scale = min(max(payload.scale, 2), 4)
     import base64 as _b64mod
     image_bytes = _b64mod.b64decode(payload.image_base64)
     image_bytes = _downscale_if_needed(image_bytes, payload.mime)
+    data_uri = f"data:{payload.mime};base64,{_b64mod.b64encode(image_bytes).decode()}"
 
-    async with httpx.AsyncClient(timeout=180) as c:
-        # Large images can't be embedded as base64 in the JSON body (413 Payload
-        # Too Large on Replicate's API). Upload to Replicate's file storage first
-        # and reference it by URL instead.
-        upload_res = await c.post(
-            "https://api.replicate.com/v1/files",
-            headers={"Authorization": f"Token {REPLICATE_KEY}"},
-            files={"content": (f"upload.{payload.mime.split('/')[-1]}", image_bytes, payload.mime)},
+    task = {
+        "taskType": "upscale",
+        "taskUUID": str(uuid.uuid4()),
+        "model": RUNWARE_UPSCALE_MODEL,
+        "upscaleFactor": scale,
+        "outputType": "URL",
+        "inputs": {"image": data_uri},
+    }
+    async with httpx.AsyncClient(timeout=120) as c:
+        res = await c.post(
+            "https://api.runware.ai/v1",
+            headers={"Authorization": f"Bearer {RUNWARE_API_KEY}", "Content-Type": "application/json"},
+            json=[task],
         )
-        if upload_res.status_code not in (200, 201):
-            log.error(f"Replicate file upload error: {upload_res.status_code} {upload_res.text}")
-            raise HTTPException(500, "Upscaling service error - please try again")
+        if res.status_code != 200:
+            log.error(f"Runware upscale error {res.status_code}: {res.text[:300]}")
+            raise HTTPException(500, f"Upscaling failed: {res.text[:200]}")
 
-        image_url = upload_res.json().get("urls", {}).get("get") or upload_res.json().get("serving_url")
-        if not image_url:
-            log.error(f"Replicate file upload - no URL in response: {upload_res.text}")
-            raise HTTPException(500, "Upscaling service error - please try again")
+        data = res.json()
+        results = data.get("data", data) if isinstance(data, dict) else data
+        if not isinstance(results, list) or not results or not results[0].get("imageURL"):
+            log.error(f"Runware upscale — no imageURL in response: {data}")
+            raise HTTPException(500, "Upscaling failed — no result returned")
 
-        # Submit to Replicate Real-ESRGAN, with retries specifically for
-        # transient "CUDA out of memory" errors — these happen when
-        # Replicate's shared GPU is briefly overloaded by other jobs, not
-        # because of anything wrong with this image. A short wait and retry
-        # very often succeeds once the GPU frees up.
-        max_attempts = 2
-        last_error = None
-        for attempt_num in range(max_attempts):
-            res = await c.post(
-                "https://api.replicate.com/v1/predictions",
-                headers={"Authorization": f"Token {REPLICATE_KEY}",
-                         "Content-Type": "application/json"},
-                json={
-                    "version": "42fed1c4974146d4d2414e2be2c5277c7fcf05fcc3a73abf41610695738c1d7b",
-                    "input": {
-                        "image": image_url,
-                        "scale": scale,
-                        "face_enhance": False,
-                    }
-                }
-            )
-            if res.status_code != 201:
-                log.error(f"Replicate submit error: {res.text}")
-                raise HTTPException(500, f"Upscaling failed: {_replicate_error_detail(res)}")
+        img_res = await c.get(results[0]["imageURL"])
+        if not img_res.is_success:
+            raise HTTPException(500, "Upscaling failed — could not fetch result image")
 
-            prediction_id = res.json()["id"]
+        b64 = _b64mod.b64encode(img_res.content).decode()
+        await db.users.update_one({"id": user["id"]}, {"$inc": {"images_used": 1}})
+        return {"base64": b64, "mime": "image/png", "scale": scale, "status": "success"}
 
-            # Poll until done
-            result = None
-            for poll_attempt in range(24):
-                await asyncio.sleep(5)
-                poll = await c.get(
-                    f"https://api.replicate.com/v1/predictions/{prediction_id}",
-                    headers={"Authorization": f"Token {REPLICATE_KEY}"}
-                )
-                data = poll.json()
-                status = data.get("status")
-
-                if status == "succeeded":
-                    output_url = data["output"]
-                    img_res = await c.get(output_url)
-                    import base64
-                    b64 = base64.b64encode(img_res.content).decode()
-                    await db.users.update_one({"id": user["id"]}, {"$inc": {"images_used": 1}})
-                    return {"base64": b64, "mime": "image/png", "scale": scale, "status": "success"}
-
-                elif status == "failed":
-                    error_msg = data.get("error", "Unknown error")
-                    is_transient_gpu_error = "out of memory" in str(error_msg).lower()
-                    if is_transient_gpu_error and attempt_num < max_attempts - 1:
-                        log.warning(f"Transient GPU memory error on attempt {attempt_num+1}/{max_attempts}, retrying: {error_msg}")
-                        last_error = error_msg
-                        await asyncio.sleep(8)  # give the shared GPU a moment to free up
-                        break  # break polling loop, outer loop retries submission
-                    raise HTTPException(500, f"Upscaling failed: {error_msg}")
-            else:
-                raise HTTPException(504, "Upscaling timed out — image may be too large")
-        raise HTTPException(500, f"Upscaling failed after {max_attempts} attempts (GPU repeatedly out of memory): {last_error}")
-
-# ── Background Removal via Replicate ─────────────────────────────────────────
+# ── Background Removal via Runware ──────────────────────────────────────────
 @api.post("/remove-background")
 async def remove_background_endpoint(payload: RemoveBgIn, user: dict = Depends(get_user)):
-    """
-    AI background removal via Replicate (851-labs/background-remover).
-    Reuses the same file-upload pattern as /upscale to avoid 413 payload errors.
-    """
+    """AI background removal via Runware (replaced Replicate/851-labs)."""
     tier = user.get("tier", "free")
     tier_cfg = TIERS.get(tier, TIERS["free"])
 
-    # Shares the same monthly image limit/counter as AI upscale — both cost
-    # real Replicate credits, so they draw from one pool per user.
     if tier != "owner":
         images_used = user.get("images_used", 0)
         limit = tier_cfg["images_per_month"]
         if images_used >= limit:
             raise HTTPException(403, f"Monthly image limit reached ({limit}). Upgrade your plan.")
 
-    if not REPLICATE_KEY:
-        raise HTTPException(500, "Replicate API key not configured")
+    if not RUNWARE_API_KEY:
+        raise HTTPException(500, "Runware API key not configured")
 
     import base64 as _b64mod
     image_bytes = _b64mod.b64decode(payload.image_base64)
     image_bytes = _downscale_if_needed(image_bytes, payload.mime)
+    data_uri = f"data:{payload.mime};base64,{_b64mod.b64encode(image_bytes).decode()}"
 
-    async with httpx.AsyncClient(timeout=180) as c:
-        upload_res = await c.post(
-            "https://api.replicate.com/v1/files",
-            headers={"Authorization": f"Token {REPLICATE_KEY}"},
-            files={"content": (f"upload.{payload.mime.split('/')[-1]}", image_bytes, payload.mime)},
+    task = {
+        "taskType": "removeBackground",
+        "taskUUID": str(uuid.uuid4()),
+        "model": RUNWARE_BGREMOVE_MODEL,
+        "outputType": "URL",
+        "outputFormat": "PNG",  # required for transparency — JPG doesn't support it
+        "inputImage": data_uri,
+    }
+    async with httpx.AsyncClient(timeout=90) as c:
+        res = await c.post(
+            "https://api.runware.ai/v1",
+            headers={"Authorization": f"Bearer {RUNWARE_API_KEY}", "Content-Type": "application/json"},
+            json=[task],
         )
-        if upload_res.status_code not in (200, 201):
-            log.error(f"Replicate file upload error: {upload_res.status_code} {upload_res.text}")
-            raise HTTPException(500, "Background removal service error - please try again")
+        if res.status_code != 200:
+            log.error(f"Runware bg-removal error {res.status_code}: {res.text[:300]}")
+            raise HTTPException(500, f"Background removal failed: {res.text[:200]}")
 
-        image_url = upload_res.json().get("urls", {}).get("get") or upload_res.json().get("serving_url")
-        if not image_url:
-            log.error(f"Replicate file upload - no URL in response: {upload_res.text}")
-            raise HTTPException(500, "Background removal service error - please try again")
+        data = res.json()
+        results = data.get("data", data) if isinstance(data, dict) else data
+        if not isinstance(results, list) or not results or not results[0].get("imageURL"):
+            log.error(f"Runware bg-removal — no imageURL in response: {data}")
+            raise HTTPException(500, "Background removal failed — no result returned")
 
-        # Uses Replicate's model-latest-version endpoint so we don't need to
-        # hardcode a version hash that can go stale.
-        #
-        # Retries specifically for transient "CUDA out of memory" errors —
-        # these happen when Replicate's shared GPU is briefly overloaded by
-        # other jobs, not because of anything wrong with this image. A short
-        # wait and retry very often succeeds once the GPU frees up.
-        max_attempts = 2
-        last_error = None
-        for attempt_num in range(max_attempts):
-            res = await c.post(
-                "https://api.replicate.com/v1/models/851-labs/background-remover/predictions",
-                headers={"Authorization": f"Token {REPLICATE_KEY}",
-                         "Content-Type": "application/json"},
-                json={"input": {"image": image_url}}
-            )
-            if res.status_code != 201:
-                log.error(f"Replicate bg-remove submit error: {res.text}")
-                raise HTTPException(500, f"Background removal failed: {_replicate_error_detail(res)}")
+        img_res = await c.get(results[0]["imageURL"])
+        if not img_res.is_success:
+            raise HTTPException(500, "Background removal failed — could not fetch result image")
 
-            prediction_id = res.json()["id"]
-
-            for poll_attempt in range(24):
-                await asyncio.sleep(3)
-                poll = await c.get(
-                    f"https://api.replicate.com/v1/predictions/{prediction_id}",
-                    headers={"Authorization": f"Token {REPLICATE_KEY}"}
-                )
-                data = poll.json()
-                status = data.get("status")
-
-                if status == "succeeded":
-                    output_url = data["output"]
-                    img_res = await c.get(output_url)
-                    b64 = _b64mod.b64encode(img_res.content).decode()
-                    if tier != "owner":
-                        await db.users.update_one({"id": user["id"]}, {"$inc": {"images_used": 1}})
-                    return {"base64": b64, "mime": "image/png", "status": "success"}
-
-                elif status == "failed":
-                    error_msg = data.get("error", "Unknown error")
-                    is_transient_gpu_error = "out of memory" in str(error_msg).lower()
-                    if is_transient_gpu_error and attempt_num < max_attempts - 1:
-                        log.warning(f"Transient GPU memory error on attempt {attempt_num+1}/{max_attempts}, retrying: {error_msg}")
-                        last_error = error_msg
-                        await asyncio.sleep(8)
-                        break
-                    raise HTTPException(500, f"Background removal failed: {error_msg}")
-            else:
-                raise HTTPException(504, "Background removal timed out")
-        raise HTTPException(500, f"Background removal failed after {max_attempts} attempts (GPU repeatedly out of memory): {last_error}")
+        b64 = _b64mod.b64encode(img_res.content).decode()
+        if tier != "owner":
+            await db.users.update_one({"id": user["id"]}, {"$inc": {"images_used": 1}})
+        return {"base64": b64, "mime": "image/png", "status": "success"}
 
 # ── Job history ───────────────────────────────────────────────────────────────
 @api.post("/jobs")
@@ -997,16 +915,17 @@ async def health_detailed():
     except Exception as e:
         checks["mongodb"] = {"status": "error", "detail": str(e)}
     
-    # Replicate check
+    # Runware check
     try:
         async with httpx.AsyncClient(timeout=10) as c:
-            r = await c.get(
-                "https://api.replicate.com/v1/account",
-                headers={"Authorization": f"Token {REPLICATE_KEY}"}
+            r = await c.post(
+                "https://api.runware.ai/v1",
+                headers={"Authorization": f"Bearer {RUNWARE_API_KEY}", "Content-Type": "application/json"},
+                json=[{"taskType": "ping", "ping": True}],
             )
-            checks["replicate"] = {"status": "ok" if r.status_code == 200 else "error", "code": r.status_code}
+            checks["runware"] = {"status": "ok" if r.status_code == 200 else "error", "code": r.status_code}
     except Exception as e:
-        checks["replicate"] = {"status": "error", "detail": str(e)}
+        checks["runware"] = {"status": "error", "detail": str(e)}
     
     # Stripe check
     checks["stripe"] = {"status": "ok" if STRIPE_KEY else "not_configured"}
@@ -1103,7 +1022,7 @@ async def health():
     except Exception as e:
         checks["mongodb"] = f"unreachable: {type(e).__name__}"
         overall_ok = False
-    checks["replicate_configured"] = bool(REPLICATE_KEY)
+    checks["runware_configured"] = bool(RUNWARE_API_KEY)
     checks["stripe_configured"] = bool(STRIPE_KEY)
     if _startup_warnings:
         checks["startup_warnings"] = _startup_warnings
