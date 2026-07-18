@@ -62,7 +62,7 @@ for _w in _startup_warnings:
     log.warning("STARTUP: %s", _w)
 
 RUNWARE_API_KEY = os.environ.get("RUNWARE_API_KEY", "")
-RUNWARE_UPSCALE_MODEL = os.environ.get("RUNWARE_UPSCALE_MODEL", "runware:502@1")  # verify against your dashboard
+RUNWARE_UPSCALE_MODEL = os.environ.get("RUNWARE_UPSCALE_MODEL", "runware:504@1")  # Real-ESRGAN — matches the UI label, supports true 4x
 RUNWARE_BGREMOVE_MODEL = os.environ.get("RUNWARE_BGREMOVE_MODEL", "runware:110@1")  # verify against your dashboard
 STRIPE_KEY    = os.environ.get("STRIPE_API_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
@@ -496,9 +496,9 @@ async def upscale_image(payload: UpscaleIn, user: dict = Depends(get_user)):
     if not RUNWARE_API_KEY:
         raise HTTPException(500, "Runware API key not configured")
 
-    # runware:502@1 (Stable Diffusion Latent Upscaler) only supports
-    # upscaleFactor=2 — Runware rejects 3 or 4 outright with invalidValue.
-    scale = 2
+    # Real-ESRGAN (runware:504@1) genuinely supports 4x — unlike the
+    # Stable Diffusion Latent Upscaler default, which only supports 2x.
+    scale = min(max(payload.scale, 2), 4)
     import base64 as _b64mod
     image_bytes = _b64mod.b64decode(payload.image_base64)
     image_bytes = _downscale_if_needed(image_bytes, payload.mime)
