@@ -496,7 +496,9 @@ async def upscale_image(payload: UpscaleIn, user: dict = Depends(get_user)):
     if not RUNWARE_API_KEY:
         raise HTTPException(500, "Runware API key not configured")
 
-    scale = min(max(payload.scale, 2), 4)
+    # runware:502@1 (Stable Diffusion Latent Upscaler) only supports
+    # upscaleFactor=2 — Runware rejects 3 or 4 outright with invalidValue.
+    scale = 2
     import base64 as _b64mod
     image_bytes = _b64mod.b64decode(payload.image_base64)
     image_bytes = _downscale_if_needed(image_bytes, payload.mime)
