@@ -279,16 +279,19 @@ export default function Optimiser() {
 
   // ── File loading ─────────────────────────────────────────────────────────
   const onFiles = useCallback(async (files) => {
-    const valid = Array.from(files)
-      .filter(f => f.type.startsWith("image/"))
-      .slice(0, limits.batch);
-    const loaded = valid.map(f => ({
+    const incoming = Array.from(files).filter(f => f.type.startsWith("image/"));
+    const loaded = incoming.map(f => ({
       id: Math.random().toString(36).slice(2),
       file: f, name: f.name, size: f.size,
       preview: URL.createObjectURL(f),
       crop: null,
     }));
-    setImages(loaded);
+    // "Add more" and the very first upload both hit this handler — append
+    // to whatever's already loaded (previously this always replaced the
+    // whole array, silently discarding earlier images) and cap the
+    // combined total at the tier's batch limit, keeping whichever images
+    // were there first.
+    setImages(prev => [...prev, ...loaded].slice(0, limits.batch));
     setResults([]);
   }, [limits.batch]);
 
