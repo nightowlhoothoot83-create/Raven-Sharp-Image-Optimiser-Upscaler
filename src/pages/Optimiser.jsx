@@ -405,7 +405,15 @@ export default function Optimiser() {
     } catch (err) {
       const msg = err.userMessage || err.message;
       const idSuffix = err.errorId ? ` (error ${err.errorId})` : "";
-      toast.error(`Couldn't start the batch: ${msg}${idSuffix}`);
+      const isLimitReached = err.response?.status === 403 && /limit reached/i.test(msg || "");
+      if (isLimitReached) {
+        toast.error(msg, {
+          duration: 10000,
+          action: { label: "Upgrade now", onClick: () => { window.location.href = "/pricing"; } },
+        });
+      } else {
+        toast.error(`Couldn't start the batch: ${msg}${idSuffix}`);
+      }
       setProcessing(false);
     }
   };
