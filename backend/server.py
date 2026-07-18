@@ -643,6 +643,12 @@ async def _process_one_batch_image(batch_id, idx, total, img: JobImageIn, settin
         pil_img = Image.open(io.BytesIO(raw))
 
         merged = {**settings, "crop": img.crop, "upscale": settings.get("upscale", False)}
+        if img.removeBg:
+            # JPEG has no alpha channel — a removed background would be
+            # flattened straight back to opaque, silently undoing the whole
+            # point of this step. Force PNG so transparency actually survives
+            # to the final export, regardless of the batch's general format.
+            merged["format"] = "png"
         pil_img = _apply_full_processing(pil_img, merged)
 
         await set_step("encoding")
