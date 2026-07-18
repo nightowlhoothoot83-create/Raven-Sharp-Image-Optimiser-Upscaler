@@ -1109,6 +1109,28 @@ export default function Optimiser() {
           </div>
         )}
 
+        {results.some(r => r.status === "done") && (
+          <div className="flex justify-center mt-6">
+            <button
+              onClick={() => {
+                setImages([]);
+                setResults([]);
+                setProgress({ current: 0, total: 0, msg: "" });
+                setPreviewIdx(0);
+                setGridPage(0);
+                setBatchId(null);
+                setResultPreviewURL(null);
+                localStorage.removeItem("ravensharp_active_batch");
+                localStorage.removeItem("ravensharp_last_completed_batch");
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+              className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-sm font-semibold transition-all"
+            >
+              ↺ Start New
+            </button>
+          </div>
+        )}
+
       </div>
     </div>
   );
