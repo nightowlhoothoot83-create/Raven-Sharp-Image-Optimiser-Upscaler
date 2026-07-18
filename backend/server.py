@@ -510,7 +510,7 @@ async def upscale_image(payload: UpscaleIn, user: dict = Depends(get_user)):
         "model": RUNWARE_UPSCALE_MODEL,
         "upscaleFactor": scale,
         "outputType": "URL",
-        "inputs": {"image": data_uri},
+        "inputImage": data_uri,
     }
     async with httpx.AsyncClient(timeout=120) as c:
         res = await c.post(
