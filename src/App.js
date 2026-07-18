@@ -11,6 +11,7 @@ import History from "./pages/History";
 import Legal from "./pages/Legal";
 import About from "./pages/About";
 import ResetPassword from "./pages/ResetPassword";
+import VerifyEmail from "./pages/VerifyEmail";
 import HealthMonitor from "./pages/HealthMonitor";
 
 function Protected({ children }) {
@@ -32,6 +33,7 @@ function AppRoutes() {
         <Route path="/legal/:page" element={<Legal />} />
         <Route path="/about"      element={<About />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/verify-email"   element={<VerifyEmail />} />
         <Route path="/health"         element={<Protected><HealthMonitor /></Protected>} />
         <Route path="*"               element={<Navigate to="/" replace />} />
       </Routes>

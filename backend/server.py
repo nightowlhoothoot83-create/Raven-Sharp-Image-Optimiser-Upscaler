@@ -172,6 +172,14 @@ async def get_user(request: Request):
     except jwt.ExpiredSignatureError: raise HTTPException(401, "Token expired")
     except Exception: raise HTTPException(401, "Invalid token")
 
+def require_verified(user: dict):
+    """Blocks processing for unverified accounts. Accounts created before
+    this feature existed have no email_verified field at all — treat that
+    as verified (grandfathered in) rather than retroactively locking out
+    everyone who already signed up."""
+    if user.get("email_verified") is False:
+        raise HTTPException(403, "Please verify your email before processing images — check your inbox for the verification link.")
+
 def _downscale_if_needed(image_bytes: bytes, mime: str, max_pixels: int = 2_000_000) -> bytes:
     """Replicate's Real-ESRGAN and background-remover models run out of GPU
     memory above ~2,096,704 total pixels (confirmed via a real error message:
@@ -409,23 +417,62 @@ class JobCreateIn(BaseModel):
     settings: Dict[str, Any] = Field(default_factory=dict)
 
 # ── Auth routes ──────────────────────────────────────────────────────────────
+SIGNUP_RATE_LIMIT = 3          # max new accounts...
+SIGNUP_RATE_WINDOW_HOURS = 1   # ...per IP, per this many hours
+
 @api.post("/auth/register")
-async def register(payload: RegisterIn, response: Response):
+async def register(payload: RegisterIn, request: Request, response: Response):
     email = payload.email.lower().strip()
     if await db.users.find_one({"email": email}):
         raise HTTPException(400, "Email already registered")
+
+    # Signup rate limiting — caps how many accounts one IP can create in a
+    # short window, closing the easy "just make a fresh free account"
+    # loophole around the monthly image limit. Not airtight (VPNs, shared
+    # IPs, patience), but it kills the casual/instant version of it.
+    client_ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "unknown").split(",")[0].strip()
+    window_start = datetime.now(timezone.utc) - timedelta(hours=SIGNUP_RATE_WINDOW_HOURS)
+    recent_signups = await db.signup_attempts.count_documents({"ip": client_ip, "created_at": {"$gte": window_start.isoformat()}})
+    if recent_signups >= SIGNUP_RATE_LIMIT:
+        raise HTTPException(429, f"Too many accounts created from this location recently. Please try again later.")
+    await db.signup_attempts.insert_one({"ip": client_ip, "created_at": datetime.now(timezone.utc).isoformat()})
+
     tier = "owner" if email == OWNER_EMAIL.lower() else "free"
+    verify_token = str(uuid.uuid4())
     user = {"id": str(uuid.uuid4()), "email": email,
             "name": payload.name or email.split("@")[0],
             "password_hash": hash_pw(payload.password),
             "tier": tier, "images_used": 0,
+            # Owner account is trusted by definition — no verification hoop
+            # to jump through on your own account.
+            "email_verified": tier == "owner",
+            "verify_token": None if tier == "owner" else verify_token,
             "created_at": datetime.now(timezone.utc).isoformat()}
     await db.users.insert_one(user)
+
+    if tier != "owner":
+        verify_link = f"{FRONTEND_URL}/verify-email?token={verify_token}"
+        await send_email(
+            email, "Verify your email — Raven Sharp Image Optimiser",
+            f"<p>Confirm your email to start processing images:</p>"
+            f"<p><a href='{verify_link}'>{verify_link}</a></p>"
+            f"<p>This link doesn't expire, but you'll need to verify before your first upload/upscale/background removal goes through.</p>"
+        )
+
     access = make_access(user["id"], email)
     refresh = make_refresh(user["id"])
     set_cookies(response, access, refresh)
     return {"id": user["id"], "email": email, "name": user["name"],
-            "tier": tier, "images_used": 0, "created_at": user["created_at"]}
+            "tier": tier, "images_used": 0, "email_verified": user["email_verified"],
+            "created_at": user["created_at"]}
+
+@api.get("/auth/verify-email/{token}")
+async def verify_email(token: str):
+    user = await db.users.find_one({"verify_token": token})
+    if not user:
+        raise HTTPException(400, "Invalid or already-used verification link.")
+    await db.users.update_one({"id": user["id"]}, {"$set": {"email_verified": True, "verify_token": None}})
+    return {"ok": True, "message": "Email verified — you're all set."}
 
 @api.post("/auth/login")
 async def login(payload: LoginIn, response: Response):
@@ -484,6 +531,7 @@ async def upscale_image(payload: UpscaleIn, user: dict = Depends(get_user)):
     True AI upscaling — via Runware (replaced Replicate/Real-ESRGAN).
     Genuine pixel reconstruction from a learned model, NOT canvas bicubic resize.
     """
+    require_verified(user)
     tier = user.get("tier", "free")
     tier_cfg = TIERS.get(tier, TIERS["free"])
 
@@ -540,6 +588,7 @@ async def upscale_image(payload: UpscaleIn, user: dict = Depends(get_user)):
 @api.post("/remove-background")
 async def remove_background_endpoint(payload: RemoveBgIn, user: dict = Depends(get_user)):
     """AI background removal via Runware (replaced Replicate/851-labs)."""
+    require_verified(user)
     tier = user.get("tier", "free")
     tier_cfg = TIERS.get(tier, TIERS["free"])
 
@@ -728,6 +777,7 @@ async def _run_batch(batch_id: str, user: dict, images: List[JobImageIn], settin
 @api.post("/batches")
 async def create_batch(payload: JobCreateIn, background_tasks: BackgroundTasks,
                         user: dict = Depends(get_user)):
+    require_verified(user)
     if not payload.images:
         raise HTTPException(400, "No images provided")
     batch_id = str(uuid.uuid4())
