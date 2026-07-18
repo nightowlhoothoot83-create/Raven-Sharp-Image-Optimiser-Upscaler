@@ -680,6 +680,17 @@ async def _process_one_batch_image(batch_id, idx, total, img: JobImageIn, settin
         image_b64, mime = img.image_base64, img.mime
         upscale_shortfall = None
 
+        # Crop coordinates from the frontend are captured against the
+        # ORIGINAL image's pixel dimensions. If real AI upscaling grows the
+        # image afterward (up to 64x with the new chained passes), applying
+        # that same crop rectangle unscaled would only capture a tiny corner
+        # of the now-much-larger image — exactly the "zoomed into a random
+        # watermark" bug. Record the true pre-upscale size here so the crop
+        # can be scaled proportionally right before it's actually applied.
+        pre_upscale_w, pre_upscale_h = None, None
+        if img.crop:
+            pre_upscale_w, pre_upscale_h = Image.open(io.BytesIO(base64.b64decode(image_b64))).size
+
         if img.removeBg:
             await set_step("removing background")
             bg_result = await remove_background_endpoint(RemoveBgIn(image_base64=image_b64, mime=mime), user)
@@ -724,7 +735,20 @@ async def _process_one_batch_image(batch_id, idx, total, img: JobImageIn, settin
         raw = base64.b64decode(image_b64)
         pil_img = Image.open(io.BytesIO(raw))
 
-        merged = {**settings, "crop": img.crop, "upscale": settings.get("upscale", False)}
+        scaled_crop = img.crop
+        if img.crop and pre_upscale_w and pre_upscale_h:
+            cur_w, cur_h = pil_img.size
+            factor_x = cur_w / pre_upscale_w
+            factor_y = cur_h / pre_upscale_h
+            if factor_x != 1 or factor_y != 1:
+                scaled_crop = {
+                    "x": img.crop["x"] * factor_x,
+                    "y": img.crop["y"] * factor_y,
+                    "width": img.crop["width"] * factor_x,
+                    "height": img.crop["height"] * factor_y,
+                }
+
+        merged = {**settings, "crop": scaled_crop, "upscale": settings.get("upscale", False)}
         if img.removeBg:
             # JPEG has no alpha channel — a removed background would be
             # flattened straight back to opaque, silently undoing the whole
