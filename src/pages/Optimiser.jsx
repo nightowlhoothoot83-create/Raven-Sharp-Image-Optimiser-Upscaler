@@ -1028,7 +1028,13 @@ export default function Optimiser() {
                     </div>
                     <div className="p-2.5 flex items-center gap-2 border-t border-white/8">
                       <div className="flex-1 text-[10px] text-[var(--muted)]">
-                        {fmtSize(origImage?.size || 0)} → <span className="text-emerald-400 font-semibold">{fmtSize(r.output_size)}</span>
+                        {fmtSize(origImage?.size || 0)} →{" "}
+                        <span className={`font-semibold ${r.output_size < (origImage?.size || 0) ? "text-emerald-400" : "text-[var(--subtle)]"}`}>
+                          {fmtSize(r.output_size)}
+                        </span>
+                        {r.output_size >= (origImage?.size || 0) && r.mime === "image/png" && (
+                          <span className="ml-1 text-[var(--subtle)]">(PNG transparency)</span>
+                        )}
                       </div>
                       {gridPreviewURLs[r.id] && (
                         <a href={gridPreviewURLs[r.id]} download={r.name}
@@ -1083,11 +1089,16 @@ export default function Optimiser() {
             <div className="p-3 flex items-center gap-3 border-t border-white/8">
               <div className="flex-1 text-xs text-[var(--muted)]">
                 {fmtSize(images[previewIdx]?.size || 0)} →{" "}
-                <span className="text-emerald-400 font-semibold">{fmtSize(currentResult.output_size)}</span>
+                <span className={`font-semibold ${currentResult.output_size < (images[previewIdx]?.size || 0) ? "text-emerald-400" : "text-[var(--subtle)]"}`}>
+                  {fmtSize(currentResult.output_size)}
+                </span>
                 {currentResult.output_size < (images[previewIdx]?.size || 0) && (
                   <span className="ml-1 text-[var(--subtle)]">
                     ({Math.round((1 - currentResult.output_size/(images[previewIdx]?.size||1))*100)}% smaller)
                   </span>
+                )}
+                {currentResult.output_size >= (images[previewIdx]?.size || 0) && currentResult.mime === "image/png" && (
+                  <span className="ml-1 text-[var(--subtle)]">(PNG transparency)</span>
                 )}
               </div>
               <a href={resultPreviewURL} download={currentResult.name}
