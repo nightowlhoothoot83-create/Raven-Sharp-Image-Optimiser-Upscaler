@@ -1029,6 +1029,11 @@ export default function Optimiser() {
                         <RefreshCw className="w-5 h-5 animate-spin text-[var(--muted)]" />
                       )}
                     </div>
+                    {r.warning && (
+                      <div className="px-3 py-2 bg-amber-500/10 border-t border-amber-500/30 text-[10px] text-amber-400">
+                        ⚠️ {r.warning}
+                      </div>
+                    )}
                     <div className="p-2.5 flex items-center gap-2 border-t border-white/8">
                       {r.output_size < (origImage?.size || 0) && (
                         <div className="flex-1 text-[10px] text-[var(--muted)]">

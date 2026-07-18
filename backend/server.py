@@ -629,6 +629,7 @@ async def _process_one_batch_image(batch_id, idx, total, img: JobImageIn, settin
         )
     try:
         image_b64, mime = img.image_base64, img.mime
+        upscale_shortfall = None
 
         if img.removeBg:
             await set_step("removing background")
@@ -636,9 +637,39 @@ async def _process_one_batch_image(batch_id, idx, total, img: JobImageIn, settin
             image_b64, mime = bg_result["base64"], bg_result["mime"]
 
         if img.upscale:
-            await set_step("AI upscaling")
-            up_result = await upscale_image(UpscaleIn(image_base64=image_b64, mime=mime, scale=4), user)
-            image_b64, mime = up_result["base64"], up_result["mime"]
+            # Guarantee real pixels, not a label: if a target width/height is
+            # set, keep running genuine AI upscale passes (Real-ESRGAN, ~4x
+            # each) until the image actually has enough real pixels to reach
+            # it — capped at 3 passes (already up to 64x headroom, far beyond
+            # any realistic print target) so a wildly oversized request can't
+            # loop forever burning API calls. Falls through to a single pass
+            # when no explicit target is set, same as before.
+            target_w = int(settings.get("width") or 0)
+            target_h = int(settings.get("height") or 0)
+
+            passes = 0
+            max_passes = 3
+            while True:
+                await set_step(f"AI upscaling (pass {passes + 1})" if passes else "AI upscaling")
+                up_result = await upscale_image(UpscaleIn(image_base64=image_b64, mime=mime, scale=4), user)
+                image_b64, mime = up_result["base64"], up_result["mime"]
+                passes += 1
+
+                if not (target_w or target_h):
+                    break  # no explicit target — one real pass is the whole job
+                cur_w, cur_h = Image.open(io.BytesIO(base64.b64decode(image_b64))).size
+                reached_w = not target_w or cur_w >= target_w
+                reached_h = not target_h or cur_h >= target_h
+                if (reached_w and reached_h) or passes >= max_passes:
+                    if not (reached_w and reached_h):
+                        upscale_shortfall = (
+                            f"Source image is too small to genuinely reach {target_w}x{target_h} — "
+                            f"even after {passes} real AI upscale passes it only reached {cur_w}x{cur_h}. "
+                            f"The DPI/size label on this file would not reflect true print quality at "
+                            f"the requested size."
+                        )
+                        log.warning(f"[{batch_id}] {img.name}: {upscale_shortfall}")
+                    break
 
         await set_step("processing (crop/resize/enhance)")
         raw = base64.b64decode(image_b64)
@@ -669,6 +700,7 @@ async def _process_one_batch_image(batch_id, idx, total, img: JobImageIn, settin
             "width": pil_img.width,
             "height": pil_img.height,
             "status": "done",
+            "warning": upscale_shortfall,
         }
     except Exception as e:
         log.error(f"[{batch_id}] Batch image error for {img.name}: {e}")
