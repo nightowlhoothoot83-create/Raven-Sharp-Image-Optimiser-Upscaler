@@ -2,13 +2,14 @@ import React from "react";
 import { Link } from "react-router-dom";
 
 const BRANDS = [
-  { name:"Mystical Moments",  logo:"/brands/mysticalMoments.png",  url:"https://mystical-moments.net" },
-  { name:"Zyia Creations",    logo:"/brands/zyiaCreations.png",     url:"https://www.etsy.com/shop/ZyiaCreations" },
-  { name:"Spew Crew Kids",    logo:"/brands/spewCrew.png",          url:"https://youtube.com/@spewcrewkids" },
-  { name:"Feed The Feed",     logo:"/brands/feedTheFeed.png",       url:"https://www.facebook.com/feedthefeed" },
-  { name:"MyCalcTools",       logo:"/brands/myCalTools.png",        url:"https://mycalctools.net" },
-  { name:"MyCalendarTools",   logo:"/brands/myCalendarTools.png",   url:"https://mycalendartools.net" },
-  { name:"ADG Hub",           logo:"/brands/ascensionDigital.png",  url:"https://ascensiondigitalgroup.com" },
+  { name: "Mystical Moments", logo: "/brands/mysticalMoments.png", url: "https://mystical-moments.net", desc: "Photography" },
+  { name: "Zyia Creations", logo: "/brands/zyiaCreations.png", url: "https://www.etsy.com/shop/ZyiaCreations", desc: "Digital Art" },
+  { name: "Spew Crew Kids", logo: "/brands/spewCrew.png", url: "https://youtube.com/@spewcrewkids", desc: "Kids Content" },
+  { name: "Feed The Feed", logo: "/brands/feedTheFeed.png", url: "https://www.facebook.com/feedthefeed", desc: "Social Media" },
+  { name: "MyCalcTools", logo: "/brands/myCalcTools.png", url: "https://mycalctools.net", desc: "Calculator Tools" },
+  { name: "MyCalendarTools", logo: "/brands/myCalendarTools.png", url: "https://mycalendartools.net", desc: "Calendar Tools" },
+  { name: "Wheel Name Picker", logo: "/brands/wheelNamePicker.png", url: "https://wheelnamepicker.com.au", desc: "Random Picker" },
+  { name: "ADG Downloads", logo: "/brands/adgDownloads.png", url: "https://ascensiondigitalgroup.com", desc: "Digital Downloads" },
 ];
 
 export default function ADGFooter() {
