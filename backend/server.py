@@ -719,50 +719,17 @@ async def _process_one_batch_image(batch_id, idx, total, img: JobImageIn, settin
             image_b64, mime = bg_result["base64"], bg_result["mime"]
 
         if img.upscale:
-            # Guarantee real pixels, not a label: if a target width/height is
-            # set, keep running genuine AI upscale passes (Real-ESRGAN, ~4x
-            # each) until the image actually has enough real pixels to reach
-            # it — capped at 3 passes (already up to 64x headroom, far beyond
-            # any realistic print target) so a wildly oversized request can't
-            # loop forever burning API calls. Falls through to a single pass
-            # when no explicit target is set, same as before.
-            target_w = int(settings.get("width") or 0)
-            target_h = int(settings.get("height") or 0)
-
-            passes = 0
-            max_passes = 3
-            while True:
-                log.info(f"[{batch_id}] {img.name}: starting upscale pass {passes + 1} (target {target_w}x{target_h}, current source b64 len {len(image_b64)})")
-                await set_step(f"AI upscaling (pass {passes + 1})" if passes else "AI upscaling")
-                try:
-                    up_result = await upscale_image(UpscaleIn(image_base64=image_b64, mime=mime, scale=4), user, count_usage=(passes == 0))
-                except Exception as pass_err:
-                    log.error(f"[{batch_id}] {img.name}: upscale pass {passes + 1} raised: {pass_err!r}")
-                    raise
-                image_b64, mime = up_result["base64"], up_result["mime"]
-                passes += 1
-                log.info(f"[{batch_id}] {img.name}: pass {passes} done, result b64 len {len(image_b64)}")
-
-                if not (target_w or target_h):
-                    break  # no explicit target — one real pass is the whole job
-                try:
-                    cur_w, cur_h = Image.open(io.BytesIO(base64.b64decode(image_b64))).size
-                except Exception as decode_err:
-                    log.error(f"[{batch_id}] {img.name}: could not decode pass {passes} result as an image: {decode_err!r}")
-                    raise
-                log.info(f"[{batch_id}] {img.name}: pass {passes} decoded to {cur_w}x{cur_h}")
-                reached_w = not target_w or cur_w >= target_w
-                reached_h = not target_h or cur_h >= target_h
-                if (reached_w and reached_h) or passes >= max_passes:
-                    if not (reached_w and reached_h):
-                        upscale_shortfall = (
-                            f"Source image is too small to genuinely reach {target_w}x{target_h} — "
-                            f"even after {passes} real AI upscale passes it only reached {cur_w}x{cur_h}. "
-                            f"The DPI/size label on this file would not reflect true print quality at "
-                            f"the requested size."
-                        )
-                        log.warning(f"[{batch_id}] {img.name}: {upscale_shortfall}")
-                    break
+            # Reverted to a single pass for now — the multi-pass chaining
+            # was producing images large enough to crash the browser (no
+            # cloud storage exists yet to hand back a link instead of a
+            # giant embedded blob), and every failed/crashed pass was still
+            # a real paid Runware call with nothing usable to show for it.
+            # Real DPI-target guarantees need proper storage built first —
+            # see continuity notes. This is back to exactly how it worked
+            # earlier tonight: one genuine Real-ESRGAN pass, safe and cheap.
+            await set_step("AI upscaling")
+            up_result = await upscale_image(UpscaleIn(image_base64=image_b64, mime=mime, scale=4), user)
+            image_b64, mime = up_result["base64"], up_result["mime"]
 
         await set_step("processing (crop/resize/enhance)")
         raw = base64.b64decode(image_b64)
