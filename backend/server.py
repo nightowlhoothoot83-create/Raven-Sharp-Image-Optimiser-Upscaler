@@ -234,15 +234,36 @@ def _apply_full_processing(img: "Image.Image", settings: dict) -> "Image.Image":
     src_w, src_h = img.size
     out_w = int(s.get("width") or 0) or src_w
     out_h = int(s.get("height") or 0) or src_h
-    if s.get("lockAspect") and s.get("width") and not s.get("height"):
-        out_h = round(out_w * src_h / src_w)
-    if s.get("lockAspect") and s.get("height") and not s.get("width"):
-        out_w = round(out_h * src_w / src_h)
-    if not s.get("upscale"):
-        out_w = min(out_w, src_w)
-        out_h = min(out_h, src_h)
-    if (out_w, out_h) != (src_w, src_h):
-        img = img.resize((max(1, out_w), max(1, out_h)), Image.LANCZOS)
+
+    if s.get("lockAspect") and s.get("width") and s.get("height"):
+        # Both dimensions explicitly set (e.g. a Size Preset auto-fills
+        # both) WITH Lock Aspect on. A plain resize to (out_w, out_h) here
+        # would silently stretch/squish the image whenever its native
+        # ratio doesn't match the target — exactly what produced "blurry,
+        # stretched" output. Instead: scale to COVER the target box
+        # (uniform scale, no distortion), then crop the excess to land on
+        # the exact target size.
+        scale = max(out_w / src_w, out_h / src_h)
+        if not s.get("upscale"):
+            scale = min(scale, 1.0)
+        scaled_w = max(1, round(src_w * scale))
+        scaled_h = max(1, round(src_h * scale))
+        if (scaled_w, scaled_h) != (src_w, src_h):
+            img = img.resize((scaled_w, scaled_h), Image.LANCZOS)
+        crop_w, crop_h = min(out_w, scaled_w), min(out_h, scaled_h)
+        left = max(0, (scaled_w - crop_w) // 2)
+        top = max(0, (scaled_h - crop_h) // 2)
+        img = img.crop((left, top, left + crop_w, top + crop_h))
+    else:
+        if s.get("lockAspect") and s.get("width") and not s.get("height"):
+            out_h = round(out_w * src_h / src_w)
+        if s.get("lockAspect") and s.get("height") and not s.get("width"):
+            out_w = round(out_h * src_w / src_h)
+        if not s.get("upscale"):
+            out_w = min(out_w, src_w)
+            out_h = min(out_h, src_h)
+        if (out_w, out_h) != (src_w, src_h):
+            img = img.resize((max(1, out_w), max(1, out_h)), Image.LANCZOS)
 
     # Bleed — matches client behaviour: white background for JPEG output,
     # transparent margin otherwise.
@@ -526,7 +547,7 @@ async def refresh_token(request: Request, response: Response):
 
 # ── True AI Upscaling via Replicate Real-ESRGAN ──────────────────────────────
 @api.post("/upscale")
-async def upscale_image(payload: UpscaleIn, user: dict = Depends(get_user)):
+async def upscale_image(payload: UpscaleIn, user: dict = Depends(get_user), count_usage: bool = True):
     """
     True AI upscaling — via Runware (replaced Replicate/Real-ESRGAN).
     Genuine pixel reconstruction from a learned model, NOT canvas bicubic resize.
@@ -581,7 +602,8 @@ async def upscale_image(payload: UpscaleIn, user: dict = Depends(get_user)):
             raise HTTPException(500, "Upscaling failed — could not fetch result image")
 
         b64 = _b64mod.b64encode(img_res.content).decode()
-        await db.users.update_one({"id": user["id"]}, {"$inc": {"images_used": 1}})
+        if count_usage:
+            await db.users.update_one({"id": user["id"]}, {"$inc": {"images_used": 1}})
         return {"base64": b64, "mime": "image/png", "scale": scale, "status": "success"}
 
 # ── Background Removal via Runware ──────────────────────────────────────────
@@ -711,7 +733,7 @@ async def _process_one_batch_image(batch_id, idx, total, img: JobImageIn, settin
             max_passes = 3
             while True:
                 await set_step(f"AI upscaling (pass {passes + 1})" if passes else "AI upscaling")
-                up_result = await upscale_image(UpscaleIn(image_base64=image_b64, mime=mime, scale=4), user)
+                up_result = await upscale_image(UpscaleIn(image_base64=image_b64, mime=mime, scale=4), user, count_usage=(passes == 0))
                 image_b64, mime = up_result["base64"], up_result["mime"]
                 passes += 1
 
