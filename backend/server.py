@@ -732,14 +732,25 @@ async def _process_one_batch_image(batch_id, idx, total, img: JobImageIn, settin
             passes = 0
             max_passes = 3
             while True:
+                log.info(f"[{batch_id}] {img.name}: starting upscale pass {passes + 1} (target {target_w}x{target_h}, current source b64 len {len(image_b64)})")
                 await set_step(f"AI upscaling (pass {passes + 1})" if passes else "AI upscaling")
-                up_result = await upscale_image(UpscaleIn(image_base64=image_b64, mime=mime, scale=4), user, count_usage=(passes == 0))
+                try:
+                    up_result = await upscale_image(UpscaleIn(image_base64=image_b64, mime=mime, scale=4), user, count_usage=(passes == 0))
+                except Exception as pass_err:
+                    log.error(f"[{batch_id}] {img.name}: upscale pass {passes + 1} raised: {pass_err!r}")
+                    raise
                 image_b64, mime = up_result["base64"], up_result["mime"]
                 passes += 1
+                log.info(f"[{batch_id}] {img.name}: pass {passes} done, result b64 len {len(image_b64)}")
 
                 if not (target_w or target_h):
                     break  # no explicit target — one real pass is the whole job
-                cur_w, cur_h = Image.open(io.BytesIO(base64.b64decode(image_b64))).size
+                try:
+                    cur_w, cur_h = Image.open(io.BytesIO(base64.b64decode(image_b64))).size
+                except Exception as decode_err:
+                    log.error(f"[{batch_id}] {img.name}: could not decode pass {passes} result as an image: {decode_err!r}")
+                    raise
+                log.info(f"[{batch_id}] {img.name}: pass {passes} decoded to {cur_w}x{cur_h}")
                 reached_w = not target_w or cur_w >= target_w
                 reached_h = not target_h or cur_h >= target_h
                 if (reached_w and reached_h) or passes >= max_passes:
