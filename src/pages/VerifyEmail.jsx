@@ -41,7 +41,7 @@ export default function VerifyEmail() {
                 Your email's verified — you're all set to start processing images.
               </p>
               <Link to="/optimiser"
-                className="inline-flex items-center justify-center w-full h-12 bg-[var(--raven)] hover:bg-[var(--raven-glow)] text-white rounded-xl font-semibold text-sm transition-all">
+                className="inline-flex items-center justify-center w-full h-12 bg-gradient-to-r from-[var(--raven)] to-[var(--raven-blue)] hover:brightness-110 shadow-[0_4px_16px_rgba(124,92,191,0.35)] hover:shadow-[0_6px_24px_rgba(124,92,191,0.5)] text-white rounded-xl font-semibold text-sm transition-all">
                 Go to Image Optimiser
               </Link>
             </div>

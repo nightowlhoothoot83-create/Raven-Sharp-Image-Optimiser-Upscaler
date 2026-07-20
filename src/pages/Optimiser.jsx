@@ -801,7 +801,7 @@ export default function Optimiser() {
                     </p>
                     {images.length > 0 ? (
                       <button onClick={() => openCrop(previewIdx)}
-                        className="flex items-center gap-2 px-5 py-2.5 bg-[var(--raven)] hover:bg-[var(--raven-glow)] text-white rounded-xl text-sm font-semibold transition-all mx-auto">
+                        className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[var(--raven)] to-[var(--raven-blue)] hover:brightness-110 shadow-[0_4px_16px_rgba(124,92,191,0.35)] hover:shadow-[0_6px_24px_rgba(124,92,191,0.5)] text-white rounded-xl text-sm font-semibold transition-all mx-auto">
                         <Crop className="w-4 h-4" /> Open Crop Tool
                       </button>
                     ) : (
@@ -944,7 +944,7 @@ export default function Optimiser() {
               <div>
                 <div className="flex flex-wrap gap-3">
                   <button onClick={run} disabled={processing}
-                    className="flex items-center gap-2 px-8 h-12 bg-[var(--raven)] hover:bg-[var(--raven-glow)] text-white rounded-xl font-semibold text-sm transition-all glow-pulse disabled:opacity-50 flex-1 justify-center">
+                    className="flex items-center gap-2 px-8 h-12 bg-gradient-to-r from-[var(--raven)] to-[var(--raven-blue)] hover:brightness-110 shadow-[0_4px_16px_rgba(124,92,191,0.35)] hover:shadow-[0_6px_24px_rgba(124,92,191,0.5)] text-white rounded-xl font-semibold text-sm transition-all glow-pulse disabled:opacity-50 flex-1 justify-center">
                     {processing ? (
                       <><RefreshCw className="w-4 h-4 animate-spin" />
                         {progress.msg || `Processing ${progress.current}/${progress.total}…`}</>
@@ -1051,7 +1051,7 @@ export default function Optimiser() {
                       )}
                       {gridPreviewURLs[r.id] && (
                         <a href={gridPreviewURLs[r.id]} download={r.name}
-                          className="flex items-center gap-1 px-2.5 py-1.5 bg-[var(--raven)] hover:bg-[var(--raven-glow)] text-white rounded-md text-[10px] font-semibold transition-all">
+                          className="flex items-center gap-1 px-2.5 py-1.5 bg-gradient-to-r from-[var(--raven)] to-[var(--raven-blue)] hover:brightness-110 shadow-[0_4px_16px_rgba(124,92,191,0.35)] hover:shadow-[0_6px_24px_rgba(124,92,191,0.5)] text-white rounded-md text-[10px] font-semibold transition-all">
                           <Download className="w-3 h-3" /> Save
                         </a>
                       )}
@@ -1110,7 +1110,7 @@ export default function Optimiser() {
                 </div>
               )}
               <a href={resultPreviewURL} download={currentResult.name}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--raven)] hover:bg-[var(--raven-glow)] text-white rounded-lg text-xs font-semibold transition-all">
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-[var(--raven)] to-[var(--raven-blue)] hover:brightness-110 shadow-[0_4px_16px_rgba(124,92,191,0.35)] hover:shadow-[0_6px_24px_rgba(124,92,191,0.5)] text-white rounded-lg text-xs font-semibold transition-all">
                 <Download className="w-3.5 h-3.5" /> Download
               </a>
             </div>

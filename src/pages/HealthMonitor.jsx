@@ -147,7 +147,7 @@ export default function HealthMonitor() {
             </button>
 
             <button onClick={check} disabled={loading}
-              className="flex items-center gap-2 px-4 py-2 bg-[var(--raven)] hover:bg-[var(--raven-glow)] text-white rounded-lg text-sm font-semibold transition-all disabled:opacity-50">
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[var(--raven)] to-[var(--raven-blue)] hover:brightness-110 shadow-[0_4px_16px_rgba(124,92,191,0.35)] hover:shadow-[0_6px_24px_rgba(124,92,191,0.5)] text-white rounded-lg text-sm font-semibold transition-all disabled:opacity-50">
               <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
               {loading ? "Checking…" : "Refresh"}
             </button>

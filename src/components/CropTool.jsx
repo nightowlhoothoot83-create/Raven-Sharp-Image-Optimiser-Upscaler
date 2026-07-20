@@ -263,7 +263,7 @@ export default function CropTool({ imageURL, originalWidth, originalHeight, onCr
       {/* Actions */}
       <div className="flex gap-3">
         <button onClick={confirmCrop}
-          className="flex items-center gap-2 px-5 py-2.5 bg-[var(--raven)] hover:bg-[var(--raven-glow)] text-white rounded-xl text-sm font-semibold transition-all">
+          className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[var(--raven)] to-[var(--raven-blue)] hover:brightness-110 shadow-[0_4px_16px_rgba(124,92,191,0.35)] hover:shadow-[0_6px_24px_rgba(124,92,191,0.5)] text-white rounded-xl text-sm font-semibold transition-all">
           <Check className="w-4 h-4" /> Apply Crop
         </button>
         <button onClick={onCancel}

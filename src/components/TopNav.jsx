@@ -87,7 +87,7 @@ export default function TopNav() {
             ) : (
               <div className="flex items-center gap-2">
                 <Link to="/login" className="px-4 py-2 text-sm text-[var(--muted)] hover:text-[var(--text)] transition-colors">Sign In</Link>
-                <Link to="/register" className="px-4 py-2 text-sm font-semibold bg-[var(--raven)] hover:bg-[var(--raven-glow)] text-white rounded-lg transition-all">Free Sign Up</Link>
+                <Link to="/register" className="px-4 py-2 text-sm font-semibold bg-gradient-to-r from-[var(--raven)] to-[var(--raven-blue)] hover:brightness-110 shadow-[0_4px_16px_rgba(124,92,191,0.35)] hover:shadow-[0_6px_24px_rgba(124,92,191,0.5)] text-white rounded-lg transition-all">Free Sign Up</Link>
               </div>
             )}
           </div>

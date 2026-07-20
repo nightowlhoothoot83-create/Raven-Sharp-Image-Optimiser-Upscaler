@@ -21,7 +21,7 @@ export default function Register() {
             <div key={f.k}><label className="text-xs font-mono uppercase tracking-widest text-[var(--muted)] block mb-2">{f.l}</label>
               <input type={f.t} value={form[f.k]} onChange={e=>setForm(v=>({...v,[f.k]:e.target.value}))} required placeholder={f.p}
                 className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-[var(--text)] outline-none focus:border-[var(--raven)]/50"/></div>))}
-          <button type="submit" disabled={loading} className="w-full h-12 bg-[var(--raven)] hover:bg-[var(--raven-glow)] text-white rounded-xl font-semibold text-sm transition-all disabled:opacity-50 glow-pulse">
+          <button type="submit" disabled={loading} className="w-full h-12 bg-gradient-to-r from-[var(--raven)] to-[var(--raven-blue)] hover:brightness-110 shadow-[0_4px_16px_rgba(124,92,191,0.35)] hover:shadow-[0_6px_24px_rgba(124,92,191,0.5)] text-white rounded-xl font-semibold text-sm transition-all disabled:opacity-50 glow-pulse">
             {loading?"Creating...":"Create Free Account"}</button></form>
         <p className="text-center text-[10px] text-[var(--subtle)] mt-4">
           By signing up you agree to our <Link to="/legal/terms" className="text-[var(--raven-glow)] hover:underline">Terms</Link> and <Link to="/legal/privacy" className="text-[var(--raven-glow)] hover:underline">Privacy Policy</Link></p>

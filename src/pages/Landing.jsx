@@ -144,7 +144,7 @@ export default function Landing() {
                 </ul>
                 <Link to={t.price === "0" ? "/register" : `/register?tier=${t.name.toLowerCase()}`}
                   className={`w-full h-11 rounded-xl text-sm font-semibold flex items-center justify-center transition-all ${
-                    t.featured ? "bg-[var(--raven)] hover:bg-[var(--raven-glow)] text-white" : "bg-white/10 hover:bg-white/15 text-white"
+                    t.featured ? "bg-gradient-to-r from-[var(--raven)] to-[var(--raven-blue)] hover:brightness-110 shadow-[0_4px_16px_rgba(124,92,191,0.35)] hover:shadow-[0_6px_24px_rgba(124,92,191,0.5)] text-white" : "bg-white/10 hover:bg-white/15 text-white"
                   }`}>
                   {t.cta}
                 </Link>

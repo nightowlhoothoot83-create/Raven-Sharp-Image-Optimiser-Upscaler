@@ -75,7 +75,24 @@ h1, h2, h3, h4 {
   border: 1px solid var(--border);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
 }
+.glass:hover {
+  border-color: rgba(124,92,191,0.45);
+  box-shadow: 0 14px 34px rgba(124,92,191,0.16), 0 0 0 1px rgba(124,92,191,0.12);
+  transform: translateY(-2px);
+}
+
+/* ── Gold sparkle badge ────────────────────────────────────────────────── */
+.sparkle-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: 'DM Mono', monospace; font-size: 11px; font-weight: 600;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--gold); background: rgba(212,175,55,0.08);
+  border: 1px solid rgba(212,175,55,0.25);
+  padding: 5px 14px; border-radius: 999px;
+}
+.sparkle-badge::before { content: '✦'; }
 
 /* ── Scrollbar ─────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
