@@ -41,7 +41,7 @@ export default function Landing() {
           </span>
           <h1 className="font-display text-5xl sm:text-7xl font-black tracking-tighter leading-[0.9] mb-6">
             Print-ready.<br/>
-            <span className="bg-gradient-to-r from-[var(--raven-glow)] via-[var(--gold)] to-[var(--raven-glow)] bg-clip-text text-transparent" style={{backgroundSize:"200%",animation:"shimmer 4s linear infinite"}}>
+            <span className="bg-gradient-to-r from-[var(--raven-glow)] via-[var(--gold)] to-[var(--raven-blue)] bg-clip-text text-transparent" style={{backgroundSize:"200%",animation:"shimmer 4s linear infinite"}}>
               Platform-perfect.
             </span>
           </h1>
@@ -50,7 +50,7 @@ export default function Landing() {
           </p>
           <div className="flex flex-wrap gap-4 justify-center">
             <Link to="/optimiser"
-              className="flex items-center gap-2 px-10 h-14 text-base font-semibold bg-[var(--raven)] hover:bg-[var(--raven-glow)] text-white rounded-xl transition-all glow-pulse">
+              className="flex items-center gap-2 px-10 h-14 text-base font-semibold bg-gradient-to-r from-[var(--raven)] to-[var(--raven-blue)] hover:brightness-110 text-white rounded-xl transition-all glow-pulse">
               Open Optimiser <ArrowRight className="w-5 h-5" />
             </Link>
             <a href="#pricing"
