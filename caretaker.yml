@@ -1,0 +1,64 @@
+version: 1
+app:
+  id: image-optimiser
+  name: Raven-Sharp Image Optimiser & Upscaler
+  production_url: https://opt.raven-sharp.com
+  frontend_platform: cloudflare-pages
+  backend_platform: railway
+
+runtime:
+  frontend:
+    language: node
+    install: npm ci
+    build: npm run build
+  backend:
+    language: python
+    install: pip install -r backend/requirements.txt
+    syntax: python -m compileall -q backend
+
+health:
+  public:
+    - path: /
+      expect_status: 200
+    - path: /api/
+      expect_status: 200
+    - path: /api/health/detailed
+      expect_status: 200
+
+critical_flows:
+  - id: basic_optimise
+    description: Upload a generated test image, resize it, process the batch, download the output, and verify the image opens.
+  - id: ai_upscale
+    description: Upload a generated low-resolution image, request AI upscale, download the result, and verify dimensions increased without corruption.
+  - id: batch_resume
+    description: Start a batch, reload the client, and verify the active batch resumes polling and completes.
+  - id: authentication
+    description: Register a disposable test account, sign in, call auth/me, refresh the session, and sign out.
+
+protected_areas:
+  approval_required:
+    - backend/server.py:billing
+    - backend/server.py:authentication
+    - database_migrations
+    - stripe_configuration
+    - production_secrets
+    - destructive_data_changes
+
+repair_policy:
+  automatic_branch_fixes:
+    - syntax_errors
+    - missing_imports
+    - broken_internal_routes
+    - invalid_start_commands
+    - missing_security_headers
+    - stale_test_urls
+    - deterministic_null_handling
+  merge_requires:
+    - frontend_build_passed
+    - backend_syntax_passed
+    - smoke_tests_passed
+    - no_secret_leaks
+    - no_protected_area_changes
+  production_verification:
+    attempts: 2
+    rollback_on_confirmed_regression: true
