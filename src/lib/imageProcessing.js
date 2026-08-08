@@ -1,15 +1,15 @@
 /**
  * Raven Sharp Image Optimiser — Client-side Processing
  *
- * All processing is client-side EXCEPT AI upscaling and background removal,
- * which call the backend → Replicate (Real-ESRGAN / background-remover).
+ * All processing is client-side except optional AI upscaling, which calls the
+ * backend provider. Background removal runs locally in the browser.
  *
  * Includes:
  * - Resize (presets + custom + aspect lock + bleed)
  * - DPI injection (PNG pHYs chunk + JPEG APP0) — print-safe
  * - Sharpen (unsharp mask style)
  * - Brightness / Contrast / Saturation
- * - Background removal (via Replicate backend)
+ * - Local background removal
  * - Crop (free, locked aspect, rule-of-thirds)
  * - Watermark (text or image)
  * - Format conversion + quality + maxKB
@@ -17,19 +17,28 @@
  * - EXIF strip
  */
 
-import api from "./api";
+import { removeBackground as imglyRemoveBackground } from "@imgly/background-removal";
 
-// ── Background removal (via Replicate backend, same as AI upscale) ─────────
+// ── Background removal (local model, cached after first download) ──────────
 async function removeBackground(fileOrObject, onProgress) {
   onProgress?.("Removing background…");
   const isFile = fileOrObject instanceof File;
   const dataURL = isFile ? await readFileAsDataURL(fileOrObject) : fileOrObject.dataURL;
-  const b64  = dataURL.split(",")[1];
-  const mime = isFile ? (fileOrObject.type || "image/jpeg") : (dataURL.match(/:([^;]+);/)?.[1] || "image/png");
-  const baseName = isFile ? fileOrObject.name : (fileOrObject.name || "image");
+  const inputBlob = dataURLtoBlob(dataURL);
+  const inputFile = isFile
+    ? fileOrObject
+    : new File([inputBlob], fileOrObject.name || "image.png", { type: inputBlob.type || "image/png" });
 
-  const { data } = await api.post("/remove-background", { image_base64: b64, mime });
-  const blob = dataURLtoBlob(`data:${data.mime};base64,${data.base64}`);
+  const blob = await imglyRemoveBackground(inputFile, {
+    progress: (key, current, total) => {
+      if (onProgress && total > 0) {
+        const pct = Math.round((current / total) * 100);
+        onProgress(`Removing background — ${key} ${pct}%`);
+      }
+    },
+  });
+
+  const baseName = isFile ? fileOrObject.name : (fileOrObject.name || "image");
   return new File([blob], baseName.replace(/\.[^.]+$/, "") + ".png", { type: "image/png" });
 }
 

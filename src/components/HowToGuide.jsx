@@ -35,8 +35,8 @@ export default function HowToGuide() {
   const steps = [
     { n: 1, title: "Upload your images", body: "Drag images in or click to browse. You can select multiple at once." },
     { n: 2, title: "Pick what each image needs", body: "Select an image, then choose actions for it — crop, background removal, watermark or auto-enhance. Each image can have different settings." },
-    { n: 3, title: "Set your output options", body: "Choose resize, DPI and format under the tabs above the tool area. For genuine print-ready output, set an exact Width/Height (not \"Auto\") — with AI Upscale on, we'll guarantee real pixels reach that target, not just label the file." },
-    { n: 4, title: "Process", body: "Hit Process to run everything. AI upscaling and background removal happen on our servers; resizing, cropping and watermarking happen instantly in your browser." },
+    { n: 3, title: "Set your output options", body: "Choose resize, DPI and format under the tabs above the tool area. For genuine print-ready output, set an exact Width/Height rather than leaving them on Auto." },
+    { n: 4, title: "Process", body: "Hit Process to run the batch locally in your browser. Optional AI upscaling uses your signed-in account; background removal, resizing, cropping and watermarking stay on-device." },
     { n: 5, title: "Download", body: "Once processing finishes, download your results individually or as a batch." },
   ];
 

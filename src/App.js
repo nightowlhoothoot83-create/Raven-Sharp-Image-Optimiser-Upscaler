@@ -13,6 +13,8 @@ import About from "./pages/About";
 import ResetPassword from "./pages/ResetPassword";
 import VerifyEmail from "./pages/VerifyEmail";
 import HealthMonitor from "./pages/HealthMonitor";
+import Pricing from "./pages/Pricing";
+import Account from "./pages/Account";
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -27,8 +29,10 @@ function AppRoutes() {
       <Routes>
         <Route path="/"           element={<Landing />} />
         <Route path="/optimiser"  element={<Optimiser />} />
+        <Route path="/pricing"    element={<Pricing />} />
         <Route path="/login"      element={<Login />} />
         <Route path="/register"   element={<Register />} />
+        <Route path="/account"    element={<Protected><Account /></Protected>} />
         <Route path="/history"    element={<Protected><History /></Protected>} />
         <Route path="/legal/:page" element={<Legal />} />
         <Route path="/about"      element={<About />} />
