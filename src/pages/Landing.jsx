@@ -113,6 +113,31 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* Realistic output preview */}
+      <section className="py-16" aria-labelledby="output-preview-title">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6">
+          <div className="glass rounded-3xl p-6 sm:p-9 border border-[var(--raven)]/25">
+            <div className="grid lg:grid-cols-[1.1fr_.9fr] gap-8 items-center">
+              <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-gradient-to-br from-[#171732] to-[#080815] border border-white/10 p-5">
+                <div className="absolute inset-0 opacity-30" style={{backgroundImage:"linear-gradient(45deg,#19192f 25%,transparent 25%),linear-gradient(-45deg,#19192f 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#19192f 75%),linear-gradient(-45deg,transparent 75%,#19192f 75%)",backgroundSize:"28px 28px",backgroundPosition:"0 0,0 14px,14px -14px,-14px 0"}} />
+                <div className="relative h-full rounded-xl bg-gradient-to-br from-fuchsia-500/30 via-violet-500/20 to-cyan-400/30 flex items-center justify-center shadow-2xl">
+                  <div className="text-center"><div className="text-6xl sm:text-7xl mb-3">🦅</div><p className="font-display text-xl font-black">480 × 480 → 1920 × 1920</p><p className="text-xs text-white/60 mt-1">Transparent PNG · 300 DPI · 4× AI upscale</p></div>
+                </div>
+                <span className="absolute top-8 left-8 text-[10px] font-mono uppercase tracking-widest bg-black/60 border border-white/10 rounded-full px-3 py-1">Output preview</span>
+              </div>
+              <div>
+                <span className="text-xs font-mono uppercase tracking-[0.25em] text-[var(--gold)]">See the result</span>
+                <h2 id="output-preview-title" className="font-display text-3xl sm:text-4xl font-bold tracking-tight mt-2 mb-4">One export, ready for the platform.</h2>
+                <p className="text-[var(--muted)] leading-relaxed mb-5">Preview every enhancement before download. Raven Sharp delivers the correct dimensions, file type and embedded DPI rather than leaving you with another file to fix.</p>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  {["AI-rebuilt detail","Background removed","Print DPI embedded","ZIP batch ready"].map(item => <div key={item} className="rounded-xl bg-white/5 border border-white/10 px-3 py-3 flex gap-2"><Check className="w-4 h-4 text-emerald-400 shrink-0" />{item}</div>)}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Pricing */}
       <section className="py-20 sm:py-24" id="pricing">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
