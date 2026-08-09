@@ -1,17 +1,22 @@
 import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { toast } from "sonner";
+import api from "../lib/api";
+import ADGFooter from "../components/ADGFooter";
 export default function Register() {
   const { register } = useAuth(); const navigate = useNavigate();
+  const [searchParams] = useSearchParams(); const selectedTier = searchParams.get("tier");
   const [form, setForm] = useState({name:"",email:"",password:"",confirm:""}); const [loading, setLoading] = useState(false);
   const submit = async e => { e.preventDefault();
     if(form.password!==form.confirm){toast.error("Passwords don't match");return;}
     setLoading(true);
-    try { await register(form.email,form.password,form.name); navigate("/optimiser"); toast.success("Welcome!"); }
+    try { await register(form.email,form.password,form.name);
+      if (selectedTier && selectedTier !== "free") { const {data}=await api.post("/billing/checkout",{tier:selectedTier,billing:"monthly"}); window.location.href=data.checkout_url; return; }
+      navigate("/optimiser"); toast.success("Welcome!"); }
     catch(err) { toast.error(err.response?.data?.detail||"Registration failed"); }
     finally { setLoading(false); }};
-  return (<div className="min-h-screen flex items-center justify-center px-4 py-16">
+  return (<div className="min-h-screen flex flex-col"><div className="flex-1 flex items-center justify-center px-4 py-16">
     <div className="w-full max-w-md">
       <div className="text-center mb-8"><img src="/brands/ravenSharpLogo.png" alt="Raven Sharp" className="w-16 h-16 object-contain mx-auto mb-4 drop-shadow-[0_0_20px_rgba(124,92,191,0.4)]"/>
         <h1 className="font-display text-3xl font-black">Create account</h1><p className="text-[var(--muted)] text-sm mt-1">Free — no credit card needed</p></div>
@@ -22,7 +27,7 @@ export default function Register() {
               <input type={f.t} value={form[f.k]} onChange={e=>setForm(v=>({...v,[f.k]:e.target.value}))} required placeholder={f.p}
                 className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-[var(--text)] outline-none focus:border-[var(--raven)]/50"/></div>))}
           <button type="submit" disabled={loading} className="w-full h-12 bg-gradient-to-r from-[var(--raven)] to-[var(--raven-blue)] hover:brightness-110 shadow-[0_4px_16px_rgba(124,92,191,0.35)] hover:shadow-[0_6px_24px_rgba(124,92,191,0.5)] text-white rounded-xl font-semibold text-sm transition-all disabled:opacity-50 glow-pulse">
-            {loading?"Creating...":"Create Free Account"}</button></form>
+            {loading?"Creating...":selectedTier?`Create Account & Continue to ${selectedTier}`:"Create Free Account"}</button></form>
         <p className="text-center text-[10px] text-[var(--subtle)] mt-4">
           By signing up you agree to our <Link to="/legal/terms" className="text-[var(--raven-glow)] hover:underline">Terms</Link> and <Link to="/legal/privacy" className="text-[var(--raven-glow)] hover:underline">Privacy Policy</Link></p>
-      </div></div></div>);}
+      </div></div></div><ADGFooter /></div>);}
