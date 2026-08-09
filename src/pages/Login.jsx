@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { toast } from "sonner";
 import { Eye, EyeOff, Mail, Lock, ArrowLeft } from "lucide-react";
 import api from "../lib/api";
+import ADGFooter from "../components/ADGFooter";
 
 export default function Login() {
   const { login } = useAuth();
@@ -43,7 +44,8 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
+    <div className="min-h-screen flex flex-col">
+      <div className="flex-1 flex items-center justify-center px-4 py-20">
       <div className="w-full max-w-md">
 
         {/* Logo */}
@@ -207,7 +209,8 @@ export default function Login() {
             </p>
           )}
         </div>
-      </div>
+      </div></div>
+      <ADGFooter />
     </div>
   );
 }
