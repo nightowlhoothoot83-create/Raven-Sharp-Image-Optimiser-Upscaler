@@ -118,13 +118,10 @@ export default function Landing() {
         <div className="max-w-5xl mx-auto px-4 sm:px-6">
           <div className="glass rounded-3xl p-6 sm:p-9 border border-[var(--raven)]/25">
             <div className="grid lg:grid-cols-[1.1fr_.9fr] gap-8 items-center">
-              <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-gradient-to-br from-[#171732] to-[#080815] border border-white/10 p-5">
-                <div className="absolute inset-0 opacity-30" style={{backgroundImage:"linear-gradient(45deg,#19192f 25%,transparent 25%),linear-gradient(-45deg,#19192f 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#19192f 75%),linear-gradient(-45deg,transparent 75%,#19192f 75%)",backgroundSize:"28px 28px",backgroundPosition:"0 0,0 14px,14px -14px,-14px 0"}} />
-                <div className="relative h-full rounded-xl bg-gradient-to-br from-fuchsia-500/30 via-violet-500/20 to-cyan-400/30 flex items-center justify-center shadow-2xl">
-                  <div className="text-center"><div className="text-6xl sm:text-7xl mb-3">🦅</div><p className="font-display text-xl font-black">480 × 480 → 1920 × 1920</p><p className="text-xs text-white/60 mt-1">Transparent PNG · 300 DPI · 4× AI upscale</p></div>
-                </div>
-                <span className="absolute top-8 left-8 text-[10px] font-mono uppercase tracking-widest bg-black/60 border border-white/10 rounded-full px-3 py-1">Output preview</span>
-              </div>
+              <figure className="rounded-2xl overflow-hidden bg-[#080815] border border-white/10 p-3 shadow-2xl">
+                <img src="/product-preview.svg" alt="Before and after optimisation preview with 4x upscaling, print DPI and export settings" className="w-full h-auto rounded-xl" loading="lazy" />
+                <figcaption className="sr-only">Illustrative preview of the optimisation controls and output information.</figcaption>
+              </figure>
               <div>
                 <span className="text-xs font-mono uppercase tracking-[0.25em] text-[var(--gold)]">See the result</span>
                 <h2 id="output-preview-title" className="font-display text-3xl sm:text-4xl font-bold tracking-tight mt-2 mb-4">One export, ready for the platform.</h2>
