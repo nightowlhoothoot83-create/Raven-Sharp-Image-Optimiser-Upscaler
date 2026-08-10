@@ -15,7 +15,7 @@ const BRANDS = [
 export default function ADGFooter() {
   return (
     <footer className="mt-20 border-t border-white/8 bg-[var(--surface)]">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 pb-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-12 pb-8">
         <div className="flex flex-col items-center mb-8">
           <a href="https://ascensiondigitalgroup.com" target="_blank" rel="noopener noreferrer" aria-label="Ascension Digital Group website (opens in new tab)">
             <img src="/brands/ascensionDigital.png" alt="Ascension Digital Group"
@@ -25,6 +25,15 @@ export default function ADGFooter() {
             Elevating Your Digital Future
           </p>
         </div>
+        <nav aria-label="Explore the Raven Sharp suite" className="flex flex-wrap justify-center gap-3 mb-8 text-xs">
+          <a href="https://raven-sharp.com" className="text-[var(--raven-glow)] hover:text-white">Raven Sharp Home</a>
+          <a href="https://pod.raven-sharp.com" className="text-[var(--muted)] hover:text-white">POD Automation</a>
+          <a href="https://opt.raven-sharp.com" className="text-[var(--muted)] hover:text-white">Image Optimiser</a>
+          <a href="https://books.raven-sharp.com" className="text-[var(--muted)] hover:text-white">Book Creator</a>
+          <a href="https://content.raven-sharp.com" className="text-[var(--muted)] hover:text-white">Content Creator</a>
+          <a href="https://ads.raven-sharp.com" className="text-[var(--muted)] hover:text-white">Ad Manager</a>
+          <a href="https://cleaner.raven-sharp.com" className="text-[var(--muted)] hover:text-white">Smart Cleaner</a>
+        </nav>
         <div className="flex flex-wrap justify-center items-center gap-6 mb-8">
           {BRANDS.map(b => (
             <a key={b.name} href={b.url} target="_blank" rel="noopener noreferrer"
@@ -40,7 +49,7 @@ export default function ADGFooter() {
           ))}
         </div>
         {/* Site navigation — second way to reach pages (WCAG 2.4.5 Level AA) */}
-        <div className="border-t border-white/5 pt-6 mb-6 grid grid-cols-2 sm:grid-cols-3 gap-6 text-xs">
+        <div className="border-t border-white/5 pt-6 mb-6 grid grid-cols-2 sm:grid-cols-4 gap-6 text-xs">
           <div>
             <h3 className="font-mono uppercase tracking-widest text-[var(--muted)] mb-2">Tools</h3>
             <ul className="space-y-1.5">
@@ -62,6 +71,14 @@ export default function ADGFooter() {
             <ul className="space-y-1.5">
               <li><a href="https://ascensiondigitalgroup.com" target="_blank" rel="noopener noreferrer" className="text-[var(--subtle)] hover:text-[var(--text)] transition-colors">Ascension Digital Group</a></li>
               <li><a href="mailto:ascensiondigitalagency@outlook.com" className="text-[var(--subtle)] hover:text-[var(--text)] transition-colors">Support</a></li>
+            </ul>
+          </div>
+          <div>
+            <h3 className="font-mono uppercase tracking-widest text-[var(--muted)] mb-2">Legal</h3>
+            <ul className="space-y-1.5">
+              <li><Link to="/legal/privacy" className="text-[var(--subtle)] hover:text-[var(--text)] transition-colors">Privacy Policy</Link></li>
+              <li><Link to="/legal/terms" className="text-[var(--subtle)] hover:text-[var(--text)] transition-colors">Terms of Service</Link></li>
+              <li><Link to="/legal/cookies" className="text-[var(--subtle)] hover:text-[var(--text)] transition-colors">Cookie Policy</Link></li>
             </ul>
           </div>
         </div>

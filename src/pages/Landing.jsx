@@ -32,7 +32,7 @@ export default function Landing() {
           <div className="flex justify-center mb-8">
             <div className="relative">
               <div className="absolute inset-0 rounded-full bg-[var(--raven)]/20 blur-3xl scale-150" />
-              <img src="/brands/ravenSharpLogo.png" alt="Raven Sharp"
+            <img src="/brands/ravenCentre.png" alt="Raven Sharp"
                 className="relative w-36 h-36 sm:w-52 sm:h-52 object-contain drop-shadow-[0_0_40px_rgba(124,92,191,0.5)]" />
             </div>
           </div>
