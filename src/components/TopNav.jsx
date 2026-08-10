@@ -20,7 +20,7 @@ export default function TopNav() {
 
   return (
     <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled ? "bg-[var(--bg)]/95 backdrop-blur-xl border-b border-white/8" : "bg-transparent"}`}>
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
 
           {/* Logo */}
@@ -87,7 +87,7 @@ export default function TopNav() {
             ) : (
               <div className="flex items-center gap-2">
                 <Link to="/login" className="px-4 py-2 text-sm text-[var(--muted)] hover:text-[var(--text)] transition-colors">Sign In</Link>
-                <Link to="/register" className="px-4 py-2 text-sm font-semibold bg-gradient-to-r from-[var(--raven)] to-[var(--raven-blue)] hover:brightness-110 shadow-[0_4px_16px_rgba(124,92,191,0.35)] hover:shadow-[0_6px_24px_rgba(124,92,191,0.5)] text-white rounded-lg transition-all">Free Sign Up</Link>
+                <Link to="/register" className="px-4 py-2 text-sm font-semibold bg-gradient-to-r from-[var(--raven)] to-[var(--raven-blue)] hover:brightness-110 shadow-[0_4px_16px_rgba(124,92,191,0.35)] hover:shadow-[0_6px_24px_rgba(124,92,191,0.5)] text-white rounded-lg transition-all">Get Started</Link>
               </div>
             )}
           </div>
