@@ -62,8 +62,8 @@ export default function Login() {
             set print-ready DPI and export complete batches from one reviewable workflow.
           </p>
           <img
-            src="/product-preview.svg"
-            alt="Optimiser workspace comparing the original with a sharper, print-ready result and export settings"
+            src="/product-preview.png"
+            alt="Raven Sharp Optimiser showing two completed before-and-after comparisons"
             className="w-full mt-6 rounded-2xl border border-white/10 bg-black/20"
           />
           <div className="grid sm:grid-cols-2 gap-3 mt-5 text-sm text-[var(--muted)] text-left">

@@ -119,8 +119,8 @@ export default function Landing() {
           <div className="glass rounded-3xl p-6 sm:p-9 border border-[var(--raven)]/25">
             <div className="grid lg:grid-cols-[1.1fr_.9fr] gap-8 items-center">
               <figure className="rounded-2xl overflow-hidden bg-[#080815] border border-white/10 p-3 shadow-2xl">
-                <img src="/product-preview.svg" alt="Before and after optimisation preview with 4x upscaling, print DPI and export settings" className="w-full h-auto rounded-xl" loading="lazy" />
-                <figcaption className="sr-only">Illustrative preview of the optimisation controls and output information.</figcaption>
+                <img src="/product-preview.png" alt="Raven Sharp Optimiser showing two completed before-and-after comparisons" className="w-full h-auto rounded-xl" loading="lazy" />
+                <figcaption className="sr-only">The live Optimiser workspace with two completed before-and-after comparisons and download controls.</figcaption>
               </figure>
               <div>
                 <span className="text-xs font-mono uppercase tracking-[0.25em] text-[var(--gold)]">See the result</span>
