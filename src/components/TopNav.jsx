@@ -26,9 +26,9 @@ export default function TopNav() {
           {/* Logo */}
           <Link to="/" className="flex items-center gap-3 group">
             <img src="/brands/ravenSharpLogo.png" alt="Raven Sharp"
-              className="w-9 h-9 object-contain group-hover:scale-105 transition-transform drop-shadow-[0_0_8px_rgba(124,92,191,0.4)]" />
+              className="w-11 h-11 object-contain group-hover:scale-105 transition-transform drop-shadow-[0_0_8px_rgba(124,92,191,0.4)]" />
             <div className="hidden sm:block">
-              <div className="font-display text-lg font-black tracking-tight leading-none">
+              <div className="font-display text-lg font-extrabold tracking-[-0.025em] leading-none">
                 RAVEN <span className="text-[var(--raven-glow)]">SHARP</span>
               </div>
               <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-[var(--raven-blue)]">Image Optimiser</div>
