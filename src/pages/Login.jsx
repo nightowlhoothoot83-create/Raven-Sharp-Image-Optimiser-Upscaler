@@ -46,13 +46,18 @@ export default function Login() {
   return (
     <div className="min-h-screen flex flex-col">
       <div className="flex-1 flex items-center justify-center px-4 py-20">
-      <div className="w-full max-w-6xl grid lg:grid-cols-[1.08fr_.92fr] gap-8 lg:gap-12 items-center">
-        <aside className="glass rounded-3xl p-6 sm:p-8 overflow-hidden">
+      <div className="w-full max-w-4xl flex flex-col gap-8 items-center">
+        <aside className="glass rounded-3xl p-6 sm:p-8 overflow-hidden text-center w-full">
+          <div className="relative w-52 h-52 mx-auto mb-4">
+            <div className="absolute inset-5 rounded-full bg-gradient-to-br from-[var(--raven)]/35 to-[var(--raven-blue)]/25 blur-3xl" />
+            <img src="/brands/ravenCentre.png" alt="Raven Sharp"
+              className="relative w-52 h-52 object-contain drop-shadow-[0_0_34px_rgba(56,189,248,0.38)]" />
+          </div>
           <div className="sparkle-badge mb-5">Image Optimiser &amp; Upscaler</div>
           <h1 className="font-display text-4xl sm:text-5xl font-black tracking-tight leading-[.98]">
-            Prepare better images before you publish.
+            Prepare better images <span className="bg-gradient-to-r from-[var(--raven-glow)] via-[var(--gold)] to-[var(--raven-blue)] bg-clip-text text-transparent" style={{backgroundSize:"200%",animation:"shimmer 4s linear infinite"}}>before you publish.</span>
           </h1>
-          <p className="text-[var(--muted)] mt-5 max-w-xl">
+          <p className="text-[var(--muted)] mt-5 max-w-2xl mx-auto">
             Optimise file size, upscale with AI, crop to exact ratios, remove backgrounds,
             set print-ready DPI and export complete batches from one reviewable workflow.
           </p>
@@ -61,13 +66,13 @@ export default function Login() {
             alt="Optimiser workspace comparing the original with a sharper, print-ready result and export settings"
             className="w-full mt-6 rounded-2xl border border-white/10 bg-black/20"
           />
-          <div className="grid sm:grid-cols-2 gap-3 mt-5 text-sm text-[var(--muted)]">
+          <div className="grid sm:grid-cols-2 gap-3 mt-5 text-sm text-[var(--muted)] text-left">
             <div className="rounded-xl border border-white/8 bg-white/[.03] p-3">AI upscaling and quality comparison</div>
             <div className="rounded-xl border border-white/8 bg-white/[.03] p-3">Crop, enhancement and background removal</div>
             <div className="rounded-xl border border-white/8 bg-white/[.03] p-3">Correct PNG and JPEG DPI metadata</div>
             <div className="rounded-xl border border-white/8 bg-white/[.03] p-3">Batch processing and ZIP downloads</div>
           </div>
-          <div className="flex flex-wrap gap-x-4 gap-y-2 mt-5 text-xs">
+          <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 mt-5 text-xs">
             <Link to="/#pricing" className="text-[var(--gold)] hover:text-white">Free, Standard A$10, Pro A$15</Link>
             <Link to="/legal/privacy" className="text-[var(--muted)] hover:text-white">Privacy</Link>
             <Link to="/legal/terms" className="text-[var(--muted)] hover:text-white">Terms</Link>
