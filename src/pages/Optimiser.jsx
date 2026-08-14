@@ -253,17 +253,6 @@ export default function Optimiser() {
     }
   };
 
-  const runCloudBackgroundRemoval = async (file) => {
-    if (!user) throw new Error("Sign in to use cloud background removal");
-    const dataURL = await readFileAsDataURL(file);
-    const b64 = dataURL.split(",")[1];
-    const mime = file.type || "image/png";
-    const { data } = await api.post("/remove-background", { image_base64: b64, mime });
-    const resultURL = `data:${data.mime || "image/png"};base64,${data.base64}`;
-    const blob = await (await fetch(resultURL)).blob();
-    return new File([blob], file.name.replace(/\.[^.]+$/, "") + "-bg-removed.png", { type: data.mime || "image/png" });
-  };
-
   // ── Process ───────────────────────────────────────────────────────────────
   const run = async () => {
     if (images.length === 0) { toast.error("Drop some images first"); return; }
@@ -291,20 +280,6 @@ export default function Optimiser() {
 
         if (img.crop) mergedSettings.crop = img.crop;
         mergedSettings.removeBg = !!img.removeBg;
-
-        // Prefer the backend for signed-in users. This avoids fragile mobile WASM/session
-        // initialisation while preserving the local-only path for anonymous/basic use.
-        if (img.removeBg && user) {
-          setProgress({ current: i + 1, total: images.length, msg: `Removing background with secure cloud processor…` });
-          try {
-            source = await runCloudBackgroundRemoval(img.file);
-            mergedSettings.removeBg = false; // do not run the browser remover a second time
-            mergedSettings.format = "png";   // preserve transparency
-          } catch (err) {
-            console.error(`Cloud background removal failed for ${img.name}:`, err);
-            throw new Error(`Background removal failed: ${err?.response?.data?.detail || err.message}`);
-          }
-        }
 
         if (settings.upscale && REPLICATE_UPSCALE_ENABLED) {
           setProgress({ current: i + 1, total: images.length, msg: `AI upscaling ${img.name}…` });
@@ -582,7 +557,7 @@ export default function Optimiser() {
                 <div>
                   <div className="text-sm font-semibold">Remove Background</div>
                   <div className="text-xs text-[var(--muted)]">
-                    {user ? "Uses the secure cloud processor for reliable mobile results" : "Runs locally in your browser after a one-time model download"}
+                    Runs locally in your browser after a one-time model download
                   </div>
                 </div>
               </div>
