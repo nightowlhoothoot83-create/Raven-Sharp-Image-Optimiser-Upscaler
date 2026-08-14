@@ -11,7 +11,14 @@ const api = axios.create({
 api.interceptors.response.use(
   res => res,
   async err => {
-    if (err.response?.status === 401 && !err.config._retry) {
+    const requestUrl = String(err.config?.url || "");
+    const isAuthProbe = requestUrl.includes("/auth/me");
+    const isRefresh = requestUrl.includes("/auth/refresh");
+
+    // A 401 from /auth/me is the normal logged-out state. Never turn that
+    // into a refresh request. Likewise, a failed refresh must terminate here
+    // rather than recursively refreshing itself.
+    if (err.response?.status === 401 && !err.config?._retry && !isAuthProbe && !isRefresh) {
       err.config._retry = true;
       try {
         await api.post("/auth/refresh", {}, { withCredentials: true });
@@ -22,9 +29,7 @@ api.interceptors.response.use(
         }
       }
     }
-    // Normalize the real backend error message + ID onto the error object so
-    // every call site can show the customer something specific and reportable
-    // instead of a generic "something went wrong".
+
     const data = err.response?.data;
     err.userMessage = data?.error || data?.detail || err.message || "Something went wrong.";
     err.errorId = data?.error_id || null;
