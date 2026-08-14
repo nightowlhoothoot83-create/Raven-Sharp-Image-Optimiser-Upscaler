@@ -1,0 +1,44 @@
+name: Restore local background removal
+on:
+  push:
+    paths: ['.github/workflows/restore-local-bgremove-20260815.yml']
+permissions:
+  contents: write
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Restore free local background remover
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('src/pages/Optimiser.jsx'); s=p.read_text()
+          start=s.find('  const runCloudBackgroundRemoval = async (file) => {')
+          if start!=-1:
+              end=s.find('  // ── Process ', start)
+              if end==-1: raise SystemExit('process marker missing')
+              s=s[:start]+s[end:]
+          marker='''        // Prefer the backend for signed-in users. This avoids fragile mobile WASM/session\n        // initialisation while preserving the local-only path for anonymous/basic use.\n'''
+          start=s.find(marker)
+          if start!=-1:
+              end=s.find('        if (settings.upscale && REPLICATE_UPSCALE_ENABLED) {', start)
+              if end==-1: raise SystemExit('upscale marker missing')
+              s=s[:start]+s[end:]
+          s=s.replace('{user ? "Uses the secure cloud processor for reliable mobile results" : "Runs locally in your browser after a one-time model download"}', 'Runs locally in your browser after a one-time model download')
+          p.write_text(s)
+      - name: Verify local path and CSP
+        run: |
+          ! grep -q 'runCloudBackgroundRemoval' src/pages/Optimiser.jsx
+          grep -q "script-src.*blob:" public/_headers
+          grep -q '@imgly/background-removal' src/lib/imageProcessing.js
+          npm ci
+          CI=false npm run build
+      - name: Commit
+        run: |
+          git config user.name 'Raven Repair Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add src/pages/Optimiser.jsx
+          git diff --cached --quiet || (git commit -m 'Restore free local background removal path' && git push)
