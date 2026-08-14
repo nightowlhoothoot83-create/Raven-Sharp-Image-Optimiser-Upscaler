@@ -579,7 +579,7 @@ async def upscale_image(payload: UpscaleIn, user: dict = Depends(get_user), coun
         "model": RUNWARE_UPSCALE_MODEL,
         "upscaleFactor": scale,
         "outputType": "URL",
-        "inputImage": data_uri,
+        "inputs": {"image": data_uri},
     }
     async with httpx.AsyncClient(timeout=120) as c:
         res = await c.post(
@@ -634,7 +634,7 @@ async def remove_background_endpoint(payload: RemoveBgIn, user: dict = Depends(g
         "model": RUNWARE_BGREMOVE_MODEL,
         "outputType": "URL",
         "outputFormat": "PNG",  # required for transparency — JPG doesn't support it
-        "inputImage": data_uri,
+        "inputs": {"image": data_uri},
     }
     async with httpx.AsyncClient(timeout=90) as c:
         res = await c.post(

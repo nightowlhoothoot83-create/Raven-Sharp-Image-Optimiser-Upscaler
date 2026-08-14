@@ -253,6 +253,17 @@ export default function Optimiser() {
     }
   };
 
+  const runCloudBackgroundRemoval = async (file) => {
+    if (!user) throw new Error("Sign in to use cloud background removal");
+    const dataURL = await readFileAsDataURL(file);
+    const b64 = dataURL.split(",")[1];
+    const mime = file.type || "image/png";
+    const { data } = await api.post("/remove-background", { image_base64: b64, mime });
+    const resultURL = `data:${data.mime || "image/png"};base64,${data.base64}`;
+    const blob = await (await fetch(resultURL)).blob();
+    return new File([blob], file.name.replace(/\.[^.]+$/, "") + "-bg-removed.png", { type: data.mime || "image/png" });
+  };
+
   // ── Process ───────────────────────────────────────────────────────────────
   const run = async () => {
     if (images.length === 0) { toast.error("Drop some images first"); return; }
@@ -280,6 +291,20 @@ export default function Optimiser() {
 
         if (img.crop) mergedSettings.crop = img.crop;
         mergedSettings.removeBg = !!img.removeBg;
+
+        // Prefer the backend for signed-in users. This avoids fragile mobile WASM/session
+        // initialisation while preserving the local-only path for anonymous/basic use.
+        if (img.removeBg && user) {
+          setProgress({ current: i + 1, total: images.length, msg: `Removing background with secure cloud processor…` });
+          try {
+            source = await runCloudBackgroundRemoval(img.file);
+            mergedSettings.removeBg = false; // do not run the browser remover a second time
+            mergedSettings.format = "png";   // preserve transparency
+          } catch (err) {
+            console.error(`Cloud background removal failed for ${img.name}:`, err);
+            throw new Error(`Background removal failed: ${err?.response?.data?.detail || err.message}`);
+          }
+        }
 
         if (settings.upscale && REPLICATE_UPSCALE_ENABLED) {
           setProgress({ current: i + 1, total: images.length, msg: `AI upscaling ${img.name}…` });
@@ -348,7 +373,7 @@ export default function Optimiser() {
         const idSuffix = err.errorId ? ` (error ${err.errorId})` : "";
         console.error(`Processing failed for ${img.name}:`, err);
         toast.error(`Failed: ${img.name} — ${msg}${idSuffix}`);
-        out.push({ error: msg, errorId: err.errorId || null, originalName: img.name, id: img.id });
+        out.push({ error: msg, errorId: err.errorId || null, originalName: img.name, id: img.id, originalURL: img.preview, outputURL: img.preview, preservedOriginal: true });
       }
     }
 
@@ -521,6 +546,18 @@ export default function Optimiser() {
               </div>
             )}
 
+            {images.length > 0 && results.length === 0 && currentImage && (
+              <div data-testid="upload-original-preview" className="glass rounded-2xl p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-semibold">Preview</span>
+                  <span className="text-xs text-[var(--muted)] truncate max-w-[65%]">{currentImage.name}</span>
+                </div>
+                <div className="rounded-xl overflow-hidden bg-black/30 min-h-[220px] flex items-center justify-center">
+                  <img src={currentImage.preview} alt={`Preview of ${currentImage.name}`} className="max-w-full max-h-[560px] object-contain" />
+                </div>
+              </div>
+            )}
+
             {/* Anonymous signup nudge — shown once after first successful result */}
             {!user && results.length > 0 && results.some(r => !r.error) && (
               <div className="glass rounded-2xl px-4 py-3 mt-3 flex items-center justify-between gap-3 border border-[var(--accent)]/30">
@@ -545,7 +582,7 @@ export default function Optimiser() {
                 <div>
                   <div className="text-sm font-semibold">Remove Background</div>
                   <div className="text-xs text-[var(--muted)]">
-                    Runs locally in your browser after a one-time model download
+                    {user ? "Uses the secure cloud processor for reliable mobile results" : "Runs locally in your browser after a one-time model download"}
                   </div>
                 </div>
               </div>
