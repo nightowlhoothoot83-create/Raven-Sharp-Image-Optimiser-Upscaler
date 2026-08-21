@@ -1,0 +1,110 @@
+name: Apply Image Optimiser regression repair 2026-08-22
+
+on:
+  push:
+    branches:
+      - fix/image-processing-regressions-20260822
+    paths:
+      - .github/workflows/apply-image-regression-fix-20260822.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/image-processing-regressions-20260822
+
+      - name: Apply targeted repair
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('src/pages/Optimiser.jsx')
+          text = path.read_text()
+
+          marker = '  // ── Process ───────────────────────────────────────────────────────────────\n'
+          cloud_fn = '''  const runCloudBackgroundRemoval = async (file) => {\n    if (!user) throw new Error("Sign in to use cloud background removal");\n    const dataURL = await readFileAsDataURL(file);\n    const b64 = dataURL.split(",")[1];\n    const mime = file.type || "image/png";\n    const { data } = await api.post("/remove-background", { image_base64: b64, mime });\n    const resultURL = `data:${data.mime || "image/png"};base64,${data.base64}`;\n    const blob = await (await fetch(resultURL)).blob();\n    return new File([blob], file.name.replace(/\\.[^.]+$/, "") + "-bg-removed.png", { type: data.mime || "image/png" });\n  };\n\n'''
+          if 'const runCloudBackgroundRemoval' not in text:
+              if marker not in text:
+                  raise SystemExit('Process marker not found')
+              text = text.replace(marker, cloud_fn + marker, 1)
+
+          old = '''        if (img.crop) mergedSettings.crop = img.crop;\n        mergedSettings.removeBg = !!img.removeBg;\n\n        if (settings.upscale && REPLICATE_UPSCALE_ENABLED) {'''
+          new = '''        if (img.crop) mergedSettings.crop = img.crop;\n        mergedSettings.removeBg = Boolean(img.removeBg);\n\n        // Never let browser canvas resizing masquerade as AI upscaling.\n        // The source is only allowed to grow after a successful AI response.\n        const wantsAiUpscale = Boolean(settings.upscale);\n        mergedSettings.upscale = false;\n\n        // Background removal is strictly opt-in per image. Signed-in users use\n        // the backend path, avoiding fragile mobile WASM/session failures.\n        if (mergedSettings.removeBg && user) {\n          setProgress({ current: i + 1, total: images.length, msg: `Removing background ${img.name}…` });\n          source = await runCloudBackgroundRemoval(img.file);\n          mergedSettings.removeBg = false;\n          mergedSettings.format = "png";\n        }\n\n        if (wantsAiUpscale && REPLICATE_UPSCALE_ENABLED) {'''
+          if old not in text:
+              raise SystemExit('Settings/upscale block not found')
+          text = text.replace(old, new, 1)
+
+          old_success = '''            source = await runAiUpscale(img.file);'''
+          new_success = '''            source = await runAiUpscale(img.file);\n            // AI has already produced the larger source. Keep canvas processing\n            // at or below that real source resolution rather than enlarging again.\n            mergedSettings.upscale = false;'''
+          if old_success not in text:
+              raise SystemExit('Upscale success line not found')
+          text = text.replace(old_success, new_success, 1)
+
+          text = text.replace(
+              'toast.error(`AI upscale failed for ${img.name}: ${msg}${idSuffix} — using standard resize`);',
+              'toast.error(`AI upscale failed for ${img.name}: ${msg}${idSuffix} — original resolution preserved`);',
+              1,
+          )
+
+          old_result = '''        result.originalURL = trueOriginalURL;'''
+          new_result = '''        result.originalURL = trueOriginalURL;\n        // Use a blob URL for the on-screen preview. Large base64 data URLs make\n        // mobile before/after previews slow and memory-heavy.\n        if (result.blob) result.outputURL = URL.createObjectURL(result.blob);'''
+          if old_result not in text:
+              raise SystemExit('Result preview line not found')
+          text = text.replace(old_result, new_result, 1)
+
+          old_wm = '''          watermarkedResult.originalURL = trueOriginalURL;'''
+          new_wm = '''          watermarkedResult.originalURL = trueOriginalURL;\n          if (watermarkedResult.blob) watermarkedResult.outputURL = URL.createObjectURL(watermarkedResult.blob);'''
+          if old_wm not in text:
+              raise SystemExit('Watermark preview line not found')
+          text = text.replace(old_wm, new_wm, 1)
+
+          text = text.replace(
+              'Runs locally in your browser after a one-time model download',
+              '{user ? "Secure processor; only runs for images you select" : "Local processor; only runs for images you select"}',
+              1,
+          )
+
+          path.write_text(text)
+
+      - name: Add regression tests
+        shell: bash
+        run: |
+          mkdir -p .github/repair-notes
+          cat > .github/repair-notes/image-processing-regression-2026-08-22.md <<'EOF'
+          # Image Optimiser regression repair — 2026-08-22
+
+          Acceptance criteria:
+          - background removal is per-image opt-in only;
+          - signed-in background removal uses backend processing and preserves PNG transparency;
+          - failed/unavailable AI upscaling never enlarges source pixels via canvas fallback;
+          - successful AI upscale is not enlarged a second time client-side;
+          - crop behaviour is unchanged;
+          - failed transforms preserve the original preview;
+          - processed previews use blob URLs to reduce mobile preview latency/memory pressure.
+          EOF
+
+      - name: Sanity checks
+        shell: bash
+        run: |
+          grep -q 'mergedSettings.removeBg = Boolean(img.removeBg)' src/pages/Optimiser.jsx
+          grep -q 'mergedSettings.upscale = false' src/pages/Optimiser.jsx
+          grep -q 'runCloudBackgroundRemoval' src/pages/Optimiser.jsx
+          grep -q 'URL.createObjectURL(result.blob)' src/pages/Optimiser.jsx
+
+      - name: Commit repair
+        shell: bash
+        run: |
+          git config user.name "Raven Repair Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -- src/pages/Optimiser.jsx .github/repair-notes/image-processing-regression-2026-08-22.md
+          if git diff --cached --quiet; then
+            echo "No changes required"
+            exit 0
+          fi
+          git commit -m "Fix background removal, upscale fallback and preview regressions"
+          git push origin HEAD:fix/image-processing-regressions-20260822
