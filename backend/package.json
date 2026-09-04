@@ -1,0 +1,7 @@
+{
+  "name": "cloudflare-root-diagnostic",
+  "private": true,
+  "scripts": {
+    "build": "node -e \"const fs=require('fs'); for (const d of ['build','dist']) { fs.mkdirSync(d,{recursive:true}); fs.writeFileSync(d+'/index.html','<!doctype html><title>Cloudflare root diagnostic</title><p>backend root detected</p>'); }\""
+  }
+}
