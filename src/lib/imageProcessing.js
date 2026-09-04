@@ -352,6 +352,12 @@ export async function processImage(fileOrProcessed, settings, onProgress) {
     if (preset) s = { ...s, ...preset.settings };
   }
 
+  // Background removal creates alpha transparency. JPEG cannot preserve alpha,
+  // so a later JPEG render would paint the removed background opaque again.
+  // Always keep background-removed results as PNG, even if a general output
+  // preset or the default output format says JPEG.
+  if (settings.removeBg) s.format = "png";
+
   // 3. Auto-enhance
   if (s.auto) {
     s.sharpen    = Math.max(s.sharpen, 3);
