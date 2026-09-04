@@ -18,7 +18,7 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build && node -e \"require('fs').rmSync('dist',{recursive:true,force:true});require('fs').cpSync('build','dist',{recursive:true})\"",
+    "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
