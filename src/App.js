@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import TopNav from "./components/TopNav";
+import ADGFooter from "./components/ADGFooter";
 import Landing from "./pages/Landing";
 import Optimiser from "./pages/Optimiser";
 import Login from "./pages/Login";
@@ -28,7 +29,7 @@ function AppRoutes() {
       <TopNav />
       <Routes>
         <Route path="/"           element={<Landing />} />
-        <Route path="/optimiser"  element={<Optimiser />} />
+        <Route path="/optimiser"  element={<><Optimiser /><ADGFooter /></>} />
         <Route path="/pricing"    element={<Pricing />} />
         <Route path="/login"      element={<Login />} />
         <Route path="/register"   element={<Register />} />
@@ -36,9 +37,9 @@ function AppRoutes() {
         <Route path="/history"    element={<Protected><History /></Protected>} />
         <Route path="/legal/:page" element={<Legal />} />
         <Route path="/about"      element={<About />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
-        <Route path="/verify-email"   element={<VerifyEmail />} />
-        <Route path="/health"         element={<Protected><HealthMonitor /></Protected>} />
+        <Route path="/reset-password" element={<><ResetPassword /><ADGFooter /></>} />
+        <Route path="/verify-email"   element={<><VerifyEmail /><ADGFooter /></>} />
+        <Route path="/health"         element={<Protected><><HealthMonitor /><ADGFooter /></></Protected>} />
         <Route path="*"               element={<Navigate to="/" replace />} />
       </Routes>
       <Toaster position="bottom-right" toastOptions={{style:{background:"var(--surface-2)",border:"1px solid var(--border)",color:"var(--text)",fontFamily:"'Outfit',sans-serif",fontSize:"14px"}}}/>
