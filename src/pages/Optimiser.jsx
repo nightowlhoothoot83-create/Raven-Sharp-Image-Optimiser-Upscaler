@@ -253,6 +253,17 @@ export default function Optimiser() {
     }
   };
 
+  const runCloudBackgroundRemoval = async (file) => {
+    if (!user) throw new Error("Sign in to use cloud background removal");
+    const dataURL = await readFileAsDataURL(file);
+    const b64 = dataURL.split(",")[1];
+    const mime = file.type || "image/png";
+    const { data } = await api.post("/remove-background", { image_base64: b64, mime });
+    const resultURL = `data:${data.mime || "image/png"};base64,${data.base64}`;
+    const blob = await (await fetch(resultURL)).blob();
+    return new File([blob], file.name.replace(/\.[^.]+$/, "") + "-bg-removed.png", { type: data.mime || "image/png" });
+  };
+
   // ── Process ───────────────────────────────────────────────────────────────
   const run = async () => {
     if (images.length === 0) { toast.error("Drop some images first"); return; }
@@ -279,12 +290,29 @@ export default function Optimiser() {
         const trueOriginalURL = URL.createObjectURL(img.file);
 
         if (img.crop) mergedSettings.crop = img.crop;
-        mergedSettings.removeBg = !!img.removeBg;
+        mergedSettings.removeBg = Boolean(img.removeBg);
 
-        if (settings.upscale && REPLICATE_UPSCALE_ENABLED) {
+        // Never let browser canvas resizing masquerade as AI upscaling.
+        // The source is only allowed to grow after a successful AI response.
+        const wantsAiUpscale = Boolean(settings.upscale);
+        mergedSettings.upscale = false;
+
+        // Background removal is strictly opt-in per image. Signed-in users use
+        // the backend path, avoiding fragile mobile WASM/session failures.
+        if (mergedSettings.removeBg && user) {
+          setProgress({ current: i + 1, total: images.length, msg: `Removing background ${img.name}…` });
+          source = await runCloudBackgroundRemoval(img.file);
+          mergedSettings.removeBg = false;
+          mergedSettings.format = "png";
+        }
+
+        if (wantsAiUpscale && REPLICATE_UPSCALE_ENABLED) {
           setProgress({ current: i + 1, total: images.length, msg: `AI upscaling ${img.name}…` });
           try {
             source = await runAiUpscale(img.file);
+            // AI has already produced the larger source. Keep canvas processing
+            // at or below that real source resolution rather than enlarging again.
+            mergedSettings.upscale = false;
           } catch (err) {
             if (!user) {
               toast.error(
@@ -301,7 +329,7 @@ export default function Optimiser() {
               const msg = err.userMessage || err.message;
               const idSuffix = err.errorId ? ` (error ${err.errorId})` : "";
               console.error(`AI upscale failed for ${img.name}:`, err);
-              toast.error(`AI upscale failed for ${img.name}: ${msg}${idSuffix} — using standard resize`);
+              toast.error(`AI upscale failed for ${img.name}: ${msg}${idSuffix} — original resolution preserved`);
             }
           }
         }
@@ -312,6 +340,9 @@ export default function Optimiser() {
           msg => setProgress(p => ({ ...p, msg }))
         );
         result.originalURL = trueOriginalURL;
+        // Use a blob URL for the on-screen preview. Large base64 data URLs make
+        // mobile before/after previews slow and memory-heavy.
+        if (result.blob) result.outputURL = URL.createObjectURL(result.blob);
 
         if (limits.watermark_forced && !mergedSettings.watermarkText) {
           const watermarkedResult = await processImage(
@@ -326,6 +357,7 @@ export default function Optimiser() {
             () => {}
           );
           watermarkedResult.originalURL = trueOriginalURL;
+          if (watermarkedResult.blob) watermarkedResult.outputURL = URL.createObjectURL(watermarkedResult.blob);
           out.push({ ...watermarkedResult, originalName: img.name, id: img.id });
         } else {
           out.push({ ...result, originalName: img.name, id: img.id });
@@ -557,7 +589,7 @@ export default function Optimiser() {
                 <div>
                   <div className="text-sm font-semibold">Remove Background</div>
                   <div className="text-xs text-[var(--muted)]">
-                    Runs locally in your browser after a one-time model download
+                    {user ? "Secure processor; only runs for images you select" : "Local processor; only runs for images you select"}
                   </div>
                 </div>
               </div>
