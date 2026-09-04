@@ -30,6 +30,12 @@ async function removeBackground(fileOrObject, onProgress) {
     : new File([inputBlob], fileOrObject.name || "image.png", { type: inputBlob.type || "image/png" });
 
   const blob = await imglyRemoveBackground(inputFile, {
+    // Self-hosted model/wasm assets — see public/bg-removal-data/.
+    // Without this the library silently falls back to fetching from
+    // https://staticimgly.com at runtime, with no local fallback if that
+    // request fails (this was the cause of the "no available backend
+    // found... failed to fetch" error).
+    publicPath: `${window.location.origin}/bg-removal-data/`,
     progress: (key, current, total) => {
       if (onProgress && total > 0) {
         const pct = Math.round((current / total) * 100);
