@@ -1,90 +1,63 @@
 import React from "react";
-import { Link } from "react-router-dom";
 
 const BRANDS = [
-  { name: "Mystical Moments", logo: "/brands/mysticalMoments.png", url: "https://mystical-moments.net", desc: "Photography" },
-  { name: "Zyia Creations", logo: "/brands/zyiaCreations.png", url: "https://www.etsy.com/shop/ZyiaCreations", desc: "Digital Art" },
-  { name: "Spew Crew Kids", logo: "/brands/spewCrew.png", url: "https://youtube.com/@spewcrewkids", desc: "Kids Content" },
-  { name: "Feed The Feed", logo: "/brands/feedTheFeed.png", url: "https://www.facebook.com/feedthefeed", desc: "Social Media" },
-  { name: "MyCalcTools", logo: "/brands/myCalcTools.png", url: "https://mycalctools.net", desc: "Calculator Tools" },
-  { name: "MyCalendarTools", logo: "/brands/myCalendarTools.png", url: "https://mycalendartools.net", desc: "Calendar Tools" },
-  { name: "Wheel Name Picker", logo: "/brands/wheelNamePicker.png", url: "https://wheelnamepicker.com.au", desc: "Random Picker" },
-  { name: "ADG Downloads", logo: "/brands/adgDownloads.png", url: "https://ascensiondigitalgroup.com", desc: "Digital Downloads" },
+  { name: "MyCalendarTools", logo: "/brands/myCalendarTools.png", url: "https://mycalendartools.net" },
+  { name: "MyCalcTools", logo: "/brands/myCalcTools.png", url: "https://mycalctools.net" },
+  { name: "Wheel Name Picker", logo: "/brands/wheelNamePicker.png", url: "https://wheelnamepicker.com.au" },
+  { name: "Raven Sharp", logo: "/brands/ravenSharpLogo.png", url: "https://raven-sharp.com" },
+  { name: "Zyia Creations", logo: "/brands/zyiaCreations.png", url: "https://zyia-creations.printify.me/" },
+  { name: "ADG Downloads", logo: "/brands/adgDownloads.png", url: "https://zyiacreations.etsy.com" },
+  { name: "Feed the Feed", logo: "/brands/feedTheFeed.png", url: "https://www.facebook.com/share/1HfyRTQtg1/" },
+  { name: "Spew Crew Kids", logo: "/brands/spewCrew.png", url: "https://www.youtube.com/@spewcrewkids" },
+  { name: "Mystical Moments", logo: "/brands/mysticalMoments.png", url: "https://mysticalmoments.pages.dev" },
 ];
 
 export default function ADGFooter() {
   return (
-    <footer className="mt-20 border-t border-white/8 bg-[var(--surface)]">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-12 pb-8">
-        <div className="flex flex-col items-center mb-8">
-          <a href="https://ascensiondigitalgroup.com" target="_blank" rel="noopener noreferrer" aria-label="Ascension Digital Group website (opens in new tab)">
-            <img src="/brands/ascensionDigital.png" alt="Ascension Digital Group"
-              className="h-9 object-contain mb-2 opacity-80 hover:opacity-100 transition-opacity" />
-          </a>
-          <p className="text-[10px] font-mono uppercase tracking-[0.25em] text-[var(--subtle)]">
-            Elevating Your Digital Future
-          </p>
-        </div>
-        <nav aria-label="Explore the Raven Sharp suite" className="flex flex-wrap justify-center gap-3 mb-8 text-xs">
-          <a href="https://raven-sharp.com" className="text-[var(--raven-glow)] hover:text-white">Raven Sharp Home</a>
-          <a href="https://pod.raven-sharp.com" className="text-[var(--muted)] hover:text-white">POD Automation</a>
-          <a href="https://opt.raven-sharp.com" className="text-[var(--muted)] hover:text-white">Image Optimiser</a>
-          <a href="https://books.raven-sharp.com" className="text-[var(--muted)] hover:text-white">Book Creator</a>
-          <a href="https://content.raven-sharp.com" className="text-[var(--muted)] hover:text-white">Content Creator</a>
-          <a href="https://ads.raven-sharp.com" className="text-[var(--muted)] hover:text-white">Ad Manager</a>
-          <a href="https://cleaner.raven-sharp.com" className="text-[var(--muted)] hover:text-white">Smart Cleaner</a>
-        </nav>
-        <div className="flex flex-wrap justify-center items-center gap-6 mb-8">
-          {BRANDS.map(b => (
-            <a key={b.name} href={b.url} target="_blank" rel="noopener noreferrer"
-              aria-label={`${b.name} (opens in new tab)`}
-              className="flex flex-col items-center gap-1.5 opacity-50 hover:opacity-100 transition-all group"
-              title={b.name}>
-              <img src={b.logo} alt={b.name}
-                className="h-9 w-9 object-contain rounded-lg group-hover:scale-110 transition-transform" />
-              <span className="text-[9px] font-mono uppercase tracking-widest text-[var(--subtle)]">
-                {b.name}
-              </span>
+    <footer className="mt-20 border-t border-white/10 bg-[#080810]">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 text-center">
+        <a href="https://ascensiondigitalgroup.com" target="_blank" rel="noopener noreferrer" className="inline-block">
+          <img
+            src="/brands/ascensionDigital.png"
+            alt="Ascension Digital"
+            className="w-[220px] h-auto rounded-xl mx-auto mb-5 object-contain"
+            style={{ filter: "drop-shadow(0 0 16px rgba(6,214,255,0.3))" }}
+          />
+        </a>
+        <h3 className="text-lg font-bold text-white mb-1">Part of the Ascension Digital Group</h3>
+        <p className="text-sm text-[var(--muted)] mb-6">Elevating Your Digital Future</p>
+
+        <div className="flex justify-center gap-4 flex-wrap mb-6 items-center">
+          {BRANDS.map((brand) => (
+            <a
+              key={brand.name}
+              href={brand.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={brand.name}
+              aria-label={`${brand.name} (opens in new tab)`}
+              className="opacity-85 hover:opacity-100 transition-opacity"
+            >
+              <img
+                src={brand.logo}
+                alt={brand.name}
+                className="w-[52px] h-[52px] rounded-xl object-cover"
+                loading="lazy"
+              />
             </a>
           ))}
         </div>
-        {/* Site navigation — second way to reach pages (WCAG 2.4.5 Level AA) */}
-        <div className="border-t border-white/5 pt-6 mb-6 grid grid-cols-2 sm:grid-cols-4 gap-6 text-xs">
-          <div>
-            <h3 className="font-mono uppercase tracking-widest text-[var(--muted)] mb-2">Tools</h3>
-            <ul className="space-y-1.5">
-              <li><Link to="/optimiser" className="text-[var(--subtle)] hover:text-[var(--text)] transition-colors">Optimiser</Link></li>
-              <li><Link to="/history" className="text-[var(--subtle)] hover:text-[var(--text)] transition-colors">Job History</Link></li>
-              <li><a href="#pricing" className="text-[var(--subtle)] hover:text-[var(--text)] transition-colors">Pricing</a></li>
-            </ul>
-          </div>
-          <div>
-            <h3 className="font-mono uppercase tracking-widest text-[var(--muted)] mb-2">Account</h3>
-            <ul className="space-y-1.5">
-              <li><Link to="/login" className="text-[var(--subtle)] hover:text-[var(--text)] transition-colors">Sign In</Link></li>
-              <li><Link to="/register" className="text-[var(--subtle)] hover:text-[var(--text)] transition-colors">Create Account</Link></li>
-              <li><Link to="/account" className="text-[var(--subtle)] hover:text-[var(--text)] transition-colors">My Account</Link></li>
-            </ul>
-          </div>
-          <div>
-            <h3 className="font-mono uppercase tracking-widest text-[var(--muted)] mb-2">Company</h3>
-            <ul className="space-y-1.5">
-              <li><a href="https://ascensiondigitalgroup.com" target="_blank" rel="noopener noreferrer" className="text-[var(--subtle)] hover:text-[var(--text)] transition-colors">Ascension Digital Group</a></li>
-              <li><a href="mailto:ascensiondigitalagency@outlook.com" className="text-[var(--subtle)] hover:text-[var(--text)] transition-colors">Support</a></li>
-            </ul>
-          </div>
-          <div>
-            <h3 className="font-mono uppercase tracking-widest text-[var(--muted)] mb-2">Legal</h3>
-            <ul className="space-y-1.5">
-              <li><Link to="/legal/privacy" className="text-[var(--subtle)] hover:text-[var(--text)] transition-colors">Privacy Policy</Link></li>
-              <li><Link to="/legal/terms" className="text-[var(--subtle)] hover:text-[var(--text)] transition-colors">Terms of Service</Link></li>
-              <li><Link to="/legal/cookies" className="text-[var(--subtle)] hover:text-[var(--text)] transition-colors">Cookie Policy</Link></li>
-            </ul>
-          </div>
-        </div>
-        <p className="text-center text-[10px] font-mono uppercase tracking-widest text-[var(--subtle)]">
-          © {new Date().getFullYear()} Ascension Digital Group. All rights reserved.
-        </p>
+
+        <a
+          href="/about#support"
+          className="inline-flex items-center justify-center rounded-full px-6 py-2.5 font-bold text-white no-underline transition-transform hover:-translate-y-0.5"
+          style={{
+            background: "linear-gradient(135deg, #06d6ff, #8b5cf6)",
+            boxShadow: "0 0 20px rgba(6,214,255,0.3), 0 0 40px rgba(139,92,246,0.2)",
+          }}
+        >
+          Support Us
+        </a>
       </div>
     </footer>
   );
