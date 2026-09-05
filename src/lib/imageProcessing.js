@@ -36,6 +36,12 @@ async function removeBackground(fileOrObject, onProgress) {
     // request fails (this was the cause of the "no available backend
     // found... failed to fetch" error).
     publicPath: `${window.location.origin}/bg-removal-data/`,
+    // Use the smaller quantized model to reduce browser memory pressure,
+    // especially on mobile where the default medium model can fail to load.
+    model: "small",
+    // Run inference on the main thread instead of proxying through a worker.
+    // This avoids worker/WASM initialization failures seen in some browsers.
+    proxyToWorker: false,
     progress: (key, current, total) => {
       if (onProgress && total > 0) {
         const pct = Math.round((current / total) * 100);
